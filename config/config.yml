@@ -1,0 +1,48 @@
+# OOPS Pipeline Configuration
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+# Directory containing input BAM files (one per sample, must be sorted)
+bam_dir: "data/bam"
+
+# Reference genome (FASTA, must be indexed with samtools faidx and bwa/bowtie2)
+reference: "data/ref/reference.fa"
+
+# Directory where all results will be written
+results_dir: "results"
+
+# ---------------------------------------------------------------------------
+# Samples
+# ---------------------------------------------------------------------------
+# List of sample IDs; each sample must have a file named {sample}.bam in bam_dir
+samples:
+  - sample1
+  - sample2
+
+# ---------------------------------------------------------------------------
+# Variant calling (bcftools mpileup | bcftools call)
+# ---------------------------------------------------------------------------
+# Minimum base quality to count a base in pileup
+min_base_quality: 20
+
+# Minimum mapping quality to include a read in pileup
+min_map_quality: 20
+
+# bcftools call model: "m" (multiallelic-caller) or "c" (consensus-caller)
+# These correspond to the short flags -m / -c passed to bcftools call
+calling_model: "m"
+
+# Minimum variant quality (QUAL field) for filtering
+min_variant_quality: 30
+
+# Minimum read depth for a site to be retained
+min_depth: 5
+
+# ---------------------------------------------------------------------------
+# Phasing (whatshap phase)
+# ---------------------------------------------------------------------------
+# Ploidy of the organism being analyzed
+ploidy: 2
+
+# Internal downsampling coverage used by whatshap (0 = disable)
+whatshap_max_coverage: 15

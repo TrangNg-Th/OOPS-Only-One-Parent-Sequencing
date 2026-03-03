@@ -1,0 +1,12 @@
+name: oops-pipeline
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - samtools=1.18
+  - bcftools=1.18
+  - whatshap=2.1
+  - snakemake-minimal=7.32.4
+  - pip
