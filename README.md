@@ -72,7 +72,7 @@ Example:
 /project/mutation_rate/
 ```
 
-Expected structure:
+*** Expected structure:***
 
 ```
 PRJ_DIR/
@@ -288,25 +288,54 @@ Callable genome size
 --sample-parent
 ```
 
-## Example
-
+## Examples of command
+Full commands to run all parts of the pipeline
 ```bash
-./pipeline.sh \
+./main.sh \
   --prj-dir /project/mutation_rate \
   --sample-child NA12879 \
   --sample-parent NA12878 \
   --all
 ```
 
+```bash 
+./main.sh \
+  --all \
+  --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
+  --sample-child NA12879 \
+  --sample-parent NA12878 \
+  --cpus 8 \
+  --time 4:00:00 \
+  --min-rdepth 15 \
+  --max-rdepth 50 \
+  --gt-qual 30 \
+  --nv-quantile 0.75 \
+  --mm-diff-min 0.1 \
+  --min-base-qual 20 \
+  --min-map-qual 20 \
+  --window 20000 \
+  --alt-read-count 8 \
+  --verbose T
+```
+
 ## Run specific parts
 
-```bash
---part 1
---part 2
---part 2b
---part 3
---part 3b
---part 4
+Run only data preparation + phasing
+```bash 
+./main.sh \
+  --part 1 2 \
+  --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
+  --sample-child NA12879 \
+  --sample-parent NA12878
+```
+
+Run only the DNM detection 
+```bash 
+./pipeline.sh \
+  --part 2b \
+  --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
+  --sample-child NA12879 \
+  --sample-parent NA12878
 ```
 
 ---
