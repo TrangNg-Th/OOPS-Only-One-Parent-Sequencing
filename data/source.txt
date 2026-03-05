@@ -4,7 +4,7 @@
 ##
 ##
 ## =========================================================
-## Links to download the file
+## Links to download the file (user editable but fixed names)
 ## =========================================================
 BAM_CHILD_URL=s3://platinum-pedigree-data/data/hifi/mapped/CHM13
 VCF_PATH=s3://platinum-pedigree-data/variants/small_variants/CHM13
@@ -13,7 +13,7 @@ VCF_PATH=s3://platinum-pedigree-data/variants/small_variants/CHM13
 ##
 ##
 ## =========================================================
-## Reference used
+## Reference used (user editable but fixed names)
 ## =========================================================
 REFERENCE_PATH=https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0_maskedY_rCRS.fa.gz
 ##
@@ -23,7 +23,7 @@ REFERENCE_PATH=https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/as
 ##
 ##
 ## =========================================================
-## File names (user editable)
+## File names (user editable but fixed names)
 ## =========================================================
 NAME_BAM_CHILD=NA12879.CHM13.haplotagged.bam
 NAME_BAMIDX_CHILD=NA12879.CHM13.haplotagged.bam.bai

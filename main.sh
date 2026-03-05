@@ -45,9 +45,10 @@ Execution control:
                       Example: --part 1 2 2b
 
   --all               Run full pipeline:
-                      Parts: 1 2 2b 3 3b 4 5
+                      Parts: 0 1 2 2b 3 3b 4 5
 
 Pipeline Parts:
+  0   Just print out the configuration
   1   Data preparation (download + VCF preprocessing)
   2   Initial phasing (Whatshap)
   2b  First DNM detection
@@ -145,7 +146,7 @@ while [[ $# -gt 0 ]]; do
             done
             ;;
         --all)
-            PARTS=("1" "2" "2b" "3" "3b" "4" "5")
+            PARTS=("0" "1" "2" "2b" "3" "3b" "4" "5")
             shift
             ;;
 
@@ -205,6 +206,9 @@ mkdir -p ${REF_DIR}
 # source.txt lives in data/ same level as this script main.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_FILE="${SCRIPT_DIR}/data/source.txt"
+
+DEPENDENCIES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPENDENCIES_FILE="${SCRIPT_DIR}/environment.yml"
 
 ## Read the source file
 if [[ ! -f "${SOURCE_FILE}" ]]; then
@@ -279,68 +283,6 @@ load_modules() {
 ##############################################
 # 1. Download data from AWS
 ##############################################
-download_data() {
-
-    mkdir -p "${HIFI_DIR}"
-    mkdir -p "${ILLUM_DIR}"
-
-    # HiFi BAMs
-    ## ============================================================================================
-    ## CHILD - REF CHM13
-    echo "[download] Downloading HiFi BAM"
-    aws s3 cp --no-sign-request "${BAM_CHILD}" "${HIFI_DIR}/${NAME_BAM_CHILD}"
-
-    aws s3 cp --no-sign-request "${BAMIDX_CHILD}" "${HIFI_DIR}/${NAME_BAMIDX_CHILD}"
-
-    # echo "[download] Downloading Illumina VCF"
-    # aws s3 cp --no-sign-request "${VCF_FULL_PATH}" "${NAME_VCF}"
-
-
-    ## =============================================================================================
-    # ## Current not used (TO BE FIXED)
-    ## =============================================================================================
-    ## Hifi BAMS
-
-    ## CHILD - REF GRch38
-    # aws s3 cp --no-sign-request \
-    #   s3://platinum-pedigree-data/data/hifi/mapped/GRCh38/${SAMPLE_CHILD}.GRCh38.haplotagged.bam \
-    #   ${PRJ_DIR}/hifi/${SAMPLE_CHILD}.GRCh38.haplotagged.bam
-
-    ## CHILD BAM INDEX
-    # aws s3 cp --no-sign-request \
-    #   s3://platinum-pedigree-data/data/hifi/mapped/GRCh38/${SAMPLE_CHILD}.GRCh38.haplotagged.bam.bai \
-    #   ${PRJ_DIR}/hifi/${SAMPLE_CHILD}.GRCh38.haplotagged.bam.bai
-
-
-    ## # ONT BAMs
-    # aws s3 cp --no-sign-request \
-    #   s3://platinum-pedigree-data/data/ont/mapped/CHM13/${SAMPLE_CHILD}.minimap2.bam \
-    #   ./${SAMPLE_CHILD}.CHM13.minimap2.bam
-
-    # aws s3 cp --no-sign-request \
-    #   s3://platinum-pedigree-data/data/ont/mapped/CHM13/${SAMPLE_CHILD}.minimap2.bam.bai \
-    #   ./${SAMPLE_CHILD}.CHM13.minimap2.bam.bai
-
-    
-    ## VCF 
-    # Pedigree consistent merged small variant calls (truthset) - Not used
-    # aws s3 cp --no-sign-request  \
-    #   s3://platinum-pedigree-data/variants/small_variant_truthset/GRCh38/CEPH1463.GRCh38.family-truthset.ov.vcf.gz \
-    #   ./small_variant_truthset/CEPH1463.GRCh38.family-truthset.ov.vcf.gz
-
-    # aws s3 cp --no-sign-request  \
-    #   s3://platinum-pedigree-data/variants/small_variant_truthset/GRCh38/hq_regions_final.bed.gz \
-    #   ./small_variant_truthset/CEPH1463.GRCh38.family-truthset.ov.vcf.gz
-
-    ## # ILLUMINA CALLS
-    # aws s3 cp --no-sign-request \
-    # s3://platinum-pedigree-data/variants/small_variants/GRCh38/CEPH1463.GRCh38.illumina-dragen.oa.vcf.gz \
-    # ${ILLUM_DIR}/CEPH1463.GRCh38.illumina-dragen.oa.vcf.gz
-    ## =============================================================================================
-    
-
-}
-
 
 download_hifi_data_job() {
 
@@ -358,6 +300,7 @@ download_hifi_data_job() {
 set -euo pipefail
 
 module load aws-cli/2.25.5
+module load samtools
 
 SAMPLE=${SAMPLE_CHILD}
 PRJ_DIR=${PRJ_DIR}
@@ -375,6 +318,20 @@ aws s3 cp --no-sign-request ${BAM_CHILD} \${HIFI_DIR}/${NAME_BAM_CHILD}
 
 aws s3 cp --no-sign-request ${BAMIDX_CHILD} \${HIFI_DIR}/${NAME_BAMIDX_CHILD}
 
+mkdir -p "${REF_DIR}"
+
+echo "[download] Downloading Reference file"
+
+wget -P "${REF_DIR}" "${REFERENCE_PATH}"
+
+gunzip "${REF_DIR}"/"${NAME_REFERENCE_FILE}"
+
+samtools faidx "${REF_DIR}"/"${NAME_REFERENCE_FILE}"
+
+echo "[download] Downloading the Illumina VCF"
+
+aws s3 cp --no-sign-request "${VCF_FULL_PATH}" "${NAME_VCF}"
+
 echo "[download] Done"
 EOF
 
@@ -390,23 +347,6 @@ EOF
 
 
 
-#####################################################3
-## Preprocess vcf files
-#######################################################
-
-
-# optional
-# ------------------------------------------------------------------------------
-# # Check disk memory used, one level deep, then sort by size
-# du -sh * .[^.]* 2>/dev/null | sort -h
-
-# # Check file in aws platinum pedigree
-# aws s3 ls --no-sign-request s3://platinum-pedigree-data/
-# ------------------------------------------------------------------------------
-
-# # link to reference
-# https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0_maskedY_rCRS.fa.gz
-
 
 ##############################################
 # 2. Preprocess VCFs (Extract parent and child vcf file from the full vcf)
@@ -416,7 +356,7 @@ generate_preprocessing_job() {
 
     local DEPENDENCY_JOBID=$1
     local OUT=./preprocess_${SAMPLE_CHILD}.slurm
-
+    echo "Depending on" ${DEPENDENCY_JOBID}
     cat << EOF > "${OUT}"
 #!/bin/bash
 #SBATCH -J preprocess_${SAMPLE_CHILD}
@@ -447,6 +387,14 @@ bcftools +setGT ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz -
 
 bcftools index ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
 
+
+# Clean PS tags
+bcftools +setGT ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz -Ou -- -t a -n u \
+| bcftools annotate -x FORMAT/PS \
+| bcftools view -Oz -o ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+
+bcftools index ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+
 EOF
 
     chmod +x "${OUT}"
@@ -454,41 +402,6 @@ EOF
     rm "${OUT}"
 }
 
-
-# split_vcfs() {
-
-#     local SAMPLE=$1
-#     local REFGENOME=$2
-#     local INFILE=$3
-
-#     bcftools view -s "${SAMPLE}" \
-#       -Oz -o "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz" \
-#       "${INFILE}"
-
-#     tabix -p vcf "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz"
-# }
-
-
-# #####################################################3
-# ## 3. Preprocess vcf files (remove PS, phasing artifacts)
-# #######################################################
-# clean_original_vcf_illumina() {
-
-#     local SAMPLE=$1
-#     local REFGENOME=$2
-
-#     local INFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz
-#     local OUTFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.unphased.noPS.vcf.gz
-
-#     echo "[clean_original_vcf] Cleaning ${SAMPLE}"
-#     echo "(ref file : ${REF})"
-
-#     bcftools +setGT "${INFILE}" -Ou -- -t a -n u \
-#     | bcftools annotate -x FORMAT/PS \
-#     | bcftools view -Oz -o "${OUTFILE}"
-
-#     bcftools index "${OUTFILE}"
-# }
 
 
 ###################################################
@@ -550,19 +463,20 @@ SAMPLE=${SAMPLE_CHILD}
 
 ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
 HIFI_BAM=${HIFI_DIR}/${NAME_BAM_CHILD}
+OUT_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
 
 module load conda
 conda activate whatshap-env
 
 whatshap phase \
   --reference \${REF} \
-  -o \${SAMPLE}.illumVCF_hifiOnly.phased.vcf.gz \
+  -o \${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.phased.vcf.gz \
   \${ILLUM_VCF} \${HIFI_BAM}
 
 whatshap stats \
-  --tsv=\${SAMPLE}.illumVCF_hifiOnly.stats.tsv \
-  --block-list=\${SAMPLE}.illumVCF_hifiOnly.blocks.tsv \
-  \${SAMPLE}.illumVCF_hifiOnly.phased.vcf.gz
+  --tsv=\${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.stats.tsv \
+  --block-list=\${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.blocks.tsv \
+  \${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.phased.vcf.gz
 
 echo "Done"
 EOF
@@ -590,8 +504,8 @@ merge_unphased-parent_phased-child_vcfs() {
     mkdir -p ${PHASED_VCF}
     mkdir -p ${MERGED_PHASED_VCF}
 
-    # move child vcf to correct place
-    mv ./${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
+    # # move child vcf to correct place
+    # mv ./${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
     
     # Index samples before merging
     bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
@@ -611,6 +525,8 @@ merge_unphased-parent_phased-child_vcfs() {
 
 
 extract_phased_snp() {
+    module load conda
+
     local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
     local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
@@ -1125,6 +1041,14 @@ main() {
     load_modules  # always
 
     for PART in "${PARTS[@]}"; do
+        ###########################################
+        # PART 0 - Print out summary of the config
+        ###########################################
+        if [[ "$PART" == "0" ]]; then
+            echo "========== PART 0: Checking configuration =========="
+            echo "Make sure that you have the following dependencies"
+            cat $DEPENDENCIES_FILE
+        fi
 
         ############################################
         # PART 1 — Data Preparation
@@ -1168,7 +1092,7 @@ main() {
             echo "========== PART 2B: Merge + first DNM detection =========="
 
             # merge phased vcf of the child to unphased vcf of parent
-            merge_unphased-parent_phased-child_vcfs
+            # merge_unphased-parent_phased-child_vcfs
 
             # Extract only positions where there's a Phase Set (PS) associated
             extract_phased_snp

@@ -1,405 +1,181 @@
+Perfect — for **public GitHub**, the README should be:
 
-# One-Parent Sequencing Mutation Rate Pipeline
+* Clear in 30 seconds
+* Installable in 2 minutes
+* Runnable in 1 copy-paste block
+* Scientifically precise but not verbose
+* Architecture-light, execution-heavy
 
-> Estimating de novo mutation rates using child long reads, child short reads, and a single parent short-read dataset.
-
----
-
-## Overview
-
-This pipeline estimates the **de novo mutation (DNM) rate** in a child using:
-
-* Child **long reads** (HiFi BAM)
-* Child **short reads** (Illumina VCF )
-* One **parent short-read** dataset (Illumina VCF)
-
-Unlike classical trio-based pipelines, this workflow is designed for scenarios where **only one parent is sequenced**, leveraging:
-
-* Long-read–guided phasing
-* Haplotype block analysis
-* Local rephasing around candidate DNMs
-
-Final mutation rate:
-
-```
-Mutation Rate = (# Validated DNMs) / (Callable genome size)
-```
+Below is a **clean, public-facing README** tailored for your pipeline.
 
 ---
 
-# Pipeline Architecture
+# One-Parent De Novo Mutation Rate Pipeline
 
-```
-PART 1  →  Data preparation
-PART 2  →  Child phasing using long reads (HiFi Bam)
-PART 2b →  Initial DNM detection
-PART 3  →  Local rephasing around DNMs
-PART 3b →  Refined DNM detection 
-PART 4  →  Callable genome estimation & mutation rate
-```
+Estimate germline **de novo mutation (DNM) rates** using:
 
-Each stage can be run independently.
+* Child **HiFi long reads** (BAM)
+* Child **Illumina short reads** (VCF)
+* One **parent Illumina short-read** dataset
+
+Designed for scenarios where only **one parent is sequenced**.
 
 ---
 
-# Repository Structure
+## Method Overview
+
+1. Phase child short reads using long reads (Whatshap)
+2. Merge phased child with unphased parent
+3. Detect haplotype mismatches (DNM candidates)
+4. Validate candidates with long-read support
+5. Rephase locally around candidates
+6. Estimate callable genome
+7. Compute mutation rate
+
+[
+\text{Mutation rate} = \frac{\text{Validated DNMs}}{\text{Callable genome size}}
+]
+
+---
+
+## Installation
+
+### 1️⃣ Clone repository
+
+```bash
+git clone https://github.com/<your-username>/one-parent-dnm.git
+cd one-parent-dnm
+```
+
+### 2️⃣ Create environment
+
+```bash
+conda env create -f environment.yml
+conda activate platinum-dnm
+```
+
+### Requirements
+
+* Python ≥ 3.10
+* bcftools
+* samtools
+* whatshap
+* SLURM (for cluster execution)
+* AWS CLI (if downloading from S3)
+
+---
+
+## Configuration
+
+Edit:
 
 ```
-.
-├── main.sh
-├── README.md
-  └── src/
-    ├── count_mismatches.py
-    ├── callable_genome.py
-    ├── dnmc_readcheck.py
-    └── fix_PhaseSet.py
-  └── data/
-    ├── source.txt
+data/source.txt
+```
 
+This file defines:
+
+* S3 locations
+* BAM / VCF filenames
+* Reference filename
+
+No hardcoded paths inside `main.sh`.
+
+---
+
+## Running the Pipeline
+
+### Run full workflow (not recommended yet)
+
+```bash
+./main.sh \
+  --all \
+  --prj-dir /path/to/project \
+  --sample-child NA12879 \
+  --sample-parent NA12878
 ```
 
 ---
 
-# Project Directory Layout (Runtime)
+### Run specific stages
 
-The runtime directory is defined via:
-
-```
---prj-dir
-```
+| Part | Description                     |
+| ---- | ------------------------------- |
+| 0    | Print configuration             |
+| 1    | Download + preprocessing        |
+| 2    | Child phasing                   |
+| 2b   | Initial DNM detection           |
+| 3    | Local rephasing                 |
+| 3b   | Refined DNM detection           |
+| 4    | Callable genome + mutation rate |
+| 5    | Cleanup                         |
 
 Example:
 
-```
-/project/mutation_rate/
+```bash
+./main.sh \
+  --part 1 2 \
+  --prj-dir /path/to/project \
+  --sample-child NA12879 \
+  --sample-parent NA12878
 ```
 
-*** Expected structure:***
+---
+
+## Output
+
+Final results are stored in:
+
+```
+PRJ_DIR/<child>_phasedvcf/
+```
+
+Key outputs:
+
+* `final_dnmc_<child>-from-<parent>.tsv`
+* `callable_genome.txt`
+* Mutation rate summary (printed at completion)
+
+---
+
+## Runtime Directory Structure
 
 ```
 PRJ_DIR/
-│
 ├── reference/
-│   └── chm13v2.0_maskedY_rCRS.fa
-│
 ├── hifi/
-│   └── SAMPLE_CHILD.CHM13.haplotagged.bam
-│
-└── variants/
-    └── small_variants/
-        ├── illumina-dragen/
-        ├── hifi/
-        └── SAMPLE_CHILD_phasedvcf/
+└── illumina-dragen/
 ```
+
+Directories are created automatically if missing.
 
 ---
 
-# Directory Details
-
-## 1. `reference/`
-
-Contains reference genome used for:
-
-* Phasing
-* VCF normalization
-* Long-read validation
-
-```
-chm13v2.0_maskedY_rCRS.fa
-```
-
----
-
-## 2. `hifi/`
-
-Child long-read BAM:
-
-```
-SAMPLE_CHILD.CHM13.haplotagged.bam
-SAMPLE_CHILD.CHM13.haplotagged.bam.bai
-```
-
-Used for:
-
-* Whatshap phasing
-* Long-read validation of DNM candidates
-
----
-
-## 3. `variants/small_variants/illumina-dragen/`
-
-Contains short-read VCFs.
-
-### After splitting:
-
-```
-SAMPLE_PARENT.CHM13.illumina-dragen.oa.vcf.gz
-SAMPLE_CHILD.CHM13.illumina-dragen.oa.vcf.gz
-```
-
-### After removing phasing artifacts:
-
-```
-*.unphased.noPS.vcf.gz
-```
-
----
-
-## 4. `variants/small_variants/SAMPLE_CHILD_phasedvcf/`
-
-Main analysis directory:
-
-```
-SAMPLE_CHILD_phasedvcf/
-│
-├── SAMPLE_CHILD.illumVCF_hifiOnly.phased.vcf.gz
-├── SAMPLE_CHILD.illumVCF_hifiOnly.stats.tsv
-├── SAMPLE_CHILD.illumVCF_hifiOnly.blocks.tsv
-│
-├── merged/
-├── HTblocks/
-├── mismatch_analysis/
-```
-
----
-
-### `merged/`
-
-Merged parent + child VCF:
-
-```
-SAMPLE_PARENT_SAMPLE_CHILD.merged.vcf.gz
-```
-
-Used for haplotype comparison.
-
----
-
-### `HTblocks/`
-
-Extracted haplotype blocks:
-
-```
-*_ps.tsv
-```
-
-Contains:
-
-| Column | Description      |
-| ------ | ---------------- |
-| CHROM  | Chromosome       |
-| POS    | Position         |
-| PS     | Phase set ID     |
-| GT     | Genotype         |
-| DP     | Depth            |
-| GQ     | Genotype quality |
-
----
-
-### `mismatch_analysis/`
-
-Core DNM detection outputs:
-
-```
-*_dnmc.tsv
-*_dnmc.bed
-*_dnmc.vcf.gz
-*_LR_validated.tsv
-```
-
-#### `_dnmc.tsv`
-
-Candidate DNM list.
-
-#### `_dnmc.bed`
-
-BED file of DNM candidate positions.
-
-#### `_dnmc.vcf.gz`
-
-Subset VCF restricted to DNM candidates.
-
-#### `_LR_validated.tsv`
-
-Long-read validation results.
-
----
-
-### `denum_calcul/`
-
-Callable genome analysis:
-
-```
-*_hetc.tsv
-*_hetc.bed
-*_hetc.vcf.gz
-```
-
-Used to compute the denominator of mutation rate.
-
----
-
-# How the Method Works
-
-### Step 1 — Phase the child
-
-Child short reads are phased using long reads via **Whatshap**.
-
-### Step 2 — Merge with one parent
-
-Phased child VCF is merged with unphased parent VCF.
-
-### Step 3 — Haplotype mismatch detection
-
-Within each phase block:
-
-* Parent = homozygous reference
-* Child = heterozygous on a specific haplotype
-
-These are candidate DNMs.
-
-### Step 4 — Long-read validation
-
-Candidates must:
-
-* Have ALT support in long reads
-* Pass base quality threshold
-* Pass mapping quality threshold
-
-### Step 5 — Local rephasing
-
-Rephase ±window around each candidate to confirm haplotype consistency.
-
-### Step 6 — Callable genome estimation
-
-Apply same filters to randomly sampled heterozygous SNPs to estimate:
-
-```
-Callable genome size
-```
-
----
-
-# Running the Pipeline
-
-## Required arguments
-
-```
---prj-dir
---sample-child
---sample-parent
-```
-
-## Examples of command
-Full commands to run all parts of the pipeline
-```bash
-./main.sh \
-  --prj-dir /project/mutation_rate \
-  --sample-child NA12879 \
-  --sample-parent NA12878 \
-  --all
-```
-
-```bash 
-./main.sh \
-  --all \
-  --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
-  --sample-child NA12879 \
-  --sample-parent NA12878 \
-  --cpus 8 \
-  --time 4:00:00 \
-  --min-rdepth 15 \
-  --max-rdepth 50 \
-  --gt-qual 30 \
-  --nv-quantile 0.75 \
-  --mm-diff-min 0.1 \
-  --min-base-qual 20 \
-  --min-map-qual 20 \
-  --window 20000 \
-  --alt-read-count 8 \
-  --verbose T
-```
-
-## Run specific parts
-
-Run only data preparation + phasing
-```bash 
-./main.sh \
-  --part 1 2 \
-  --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
-  --sample-child NA12879 \
-  --sample-parent NA12878
-```
-
-Run only the DNM detection 
-```bash 
-./pipeline.sh \
-  --part 2b \
-  --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
-  --sample-child NA12879 \
-  --sample-parent NA12878
-```
-
----
-
-# Software Requirements
-
-* SLURM
-* bcftools
-* whatshap
-* Python 3
-* AWS CLI (optional)
-* Conda
-
----
-
-# Outputs
-
-After full run:
-
-* Final validated DNM list
-* Callable genome size
-* Mutation rate estimate
-
----
-
-# Scientific Assumptions
+## Scientific Assumptions
 
 * Accurate long-read phasing
-* Parent truly homozygous reference at DNM sites
+* Parent homozygous reference at true DNM sites
+* Identical filtering for numerator and denominator
 * Phase blocks reflect true haplotypes
-* Filters applied identically to numerator and denominator
 
 ---
 
-# Reproducibility
+## Reproducibility
 
 * Modular execution (`--part`)
 * Deterministic filtering
 * Explicit denominator calculation
-* Long-read confirmation stage
+* Long-read validation stage
+* Dataset configuration isolated in `source.txt`
 
 ---
 
-# Citation
+## Citation
 
-If using this pipeline in a publication, please cite:
+If using this pipeline in a publication:
 
-> [Nguyen], One-Parent Sequencing Mutation Rate Pipeline, GitHub repository.
-
-
----
-
-# License
-None
+> Nguyen, One-Parent De Novo Mutation Rate Pipeline (GitHub)
 
 ---
 
-# Future Improvements
 
-* Multi-parent extension
-* Automatic Slurm dependency chaining
-* Containerization (Docker/Singularity)
-* Workflow manager integration (Nextflow/Snakemake)
-
----
