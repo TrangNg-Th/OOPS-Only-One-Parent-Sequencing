@@ -48,12 +48,14 @@ Each stage can be run independently.
 .
 ├── main.sh
 ├── README.md
-└── variants/
-    └── src/
-        ├── count_mismatches.py
-        ├── callable_genome.py
-        ├── dnmc_readcheck.py
-        └── fix_PhaseSet.py
+  └── src/
+    ├── count_mismatches.py
+    ├── callable_genome.py
+    ├── dnmc_readcheck.py
+    └── fix_PhaseSet.py
+  └── data/
+    ├── source.txt
+
 ```
 
 ---

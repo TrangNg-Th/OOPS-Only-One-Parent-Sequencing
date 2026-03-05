@@ -1,0 +1,16 @@
+name: whatshap-env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.12
+  - bcftools>=1.17
+  - samtools>=1.17
+  - tabix
+  - whatshap
+  - pandas
+  - numpy
+  - pysam
+  - awscli
+prefix: /N/u/nguyetrt/Quartz/.conda/envs/whatshap-env

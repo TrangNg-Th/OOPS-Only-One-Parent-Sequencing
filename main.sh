@@ -7,6 +7,12 @@ set -euo pipefail
 # Project: Platinum pedigree analysis
 ################################################################################
 
+
+# Example of command (for this project)
+# bash main.sh \
+# --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
+# --sample-child NA12879 --sample-parent NA12877 --part 4
+
 ##############################################
 # Configuration (user input)
 ##############################################
@@ -54,6 +60,7 @@ Pipeline Parts:
 Optional parameters (with defaults):
 ------------------------------------------------------------------
   --cpus              CPUs for phasing job (default: 8)
+  --reference         Reference file (default: prj-dir/reference/chm13v2.0_maskedY_rCRS.fa)
   --time              Slurm walltime (default: 4:00:00)
   --min-rdepth        Minimum read depth (default: 15)
   --max-rdepth        Maximum read depth (default: 50)
@@ -74,6 +81,7 @@ Run entire pipeline:
   ./pipeline.sh \
     --all \
     --prj-dir /path/to/project \
+    --reference /path/tp/project/chm13v2.0_maskedY_rCRS.fa \
     --sample-child NA12879 \
     --sample-parent NA12878
 
@@ -81,6 +89,7 @@ Run only callable genome + final summary:
   ./pipeline.sh \
     --part 4 \
     --prj-dir /path/to/project \
+    --reference /path/tp/project/chm13v2.0_maskedY_rCRS.fa \
     --sample-child NA12879 \
     --sample-parent NA12878
 
@@ -88,6 +97,7 @@ Run data prep + phasing only:
   ./pipeline.sh \
     --part 1 2 \
     --prj-dir /path/to/project \
+    --reference /path/tp/project/chm13v2.0_maskedY_rCRS.fa \
     --sample-child NA12879 \
     --sample-parent NA12878
 
@@ -116,6 +126,7 @@ VERBOSE=T
 RECOUNT=T
 NOTRECOUNT=F
 
+
 ##############################################
 # Parse arguments
 ##############################################
@@ -139,6 +150,7 @@ while [[ $# -gt 0 ]]; do
             ;;
 
         --prj-dir) PRJ_DIR="$2"; shift 2 ;;
+        --reference) REF="$2"; shift 2 ;;
         --sample-child) SAMPLE_CHILD="$2"; shift 2 ;;
         --sample-parent) SAMPLE_PARENT="$2"; shift 2 ;;
         --cpus) CPUS="$2"; shift 2 ;;
@@ -173,10 +185,48 @@ fi
 # Derived variables
 ##############################################
 
-ILLUM_DIR=${PRJ_DIR}/variants/small_variants/illumina-dragen
-HIFI_DIR=${PRJ_DIR}/variants/small_variants/hifi
-REF=${PRJ_DIR}/reference/chm13v2.0_maskedY_rCRS.fa
+ILLUM_DIR=${PRJ_DIR}/illumina-dragen
+HIFI_DIR=${PRJ_DIR}/hifi
+REF_DIR=${PRJ_DIR}/reference
 v=$((WINDW / 1000))
+
+
+
+# Make directory
+mkdir -p ${ILLUM_DIR}
+mkdir -p ${HIFI_DIR}
+mkdir -p ${REF_DIR}
+
+
+##############################################
+# Load data source configuration
+##############################################
+# source.txt lives in data/ same level as this script main.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_FILE="${SCRIPT_DIR}/data/source.txt"
+
+## Read the source file
+if [[ ! -f "${SOURCE_FILE}" ]]; then
+    echo "ERROR: source.txt not found at ${SOURCE_FILE}"
+    exit 1
+fi
+
+set -a
+source <(grep -v '^##' "${SOURCE_FILE}")
+set +a
+
+####################################################
+## Final BAM paths
+####################################################
+BAM_CHILD="${BAM_CHILD_URL}/${NAME_BAM_CHILD}"
+BAMIDX_CHILD="${BAM_CHILD_URL}/${NAME_BAMIDX_CHILD}"
+
+# VCF
+VCF_FULL_PATH="${VCF_PATH}/${NAME_VCF_FILE}"
+NAME_VCF="${ILLUM_DIR}/${NAME_VCF_FILE}"
+
+# Reference
+REF="${REF:-${REF_DIR}/${NAME_REFERENCE_FILE}}"
 
 ##############################################
 # Print configuration summary
@@ -199,52 +249,69 @@ echo "Window size (bp)         : ${WINDW}"
 echo "Window size (kb)         : ${v}"
 echo "Alt read count (LR)      : ${ALT_READ_COUNT}"
 echo "Verbose LR validation    : ${VERBOSE}"
-
+echo "Data source              : ${SOURCE_FILE}"
+echo "Bam file of the child    : ${HIFI_DIR}/${NAME_BAM_CHILD}"
+echo "Vcf file                 : ${NAME_VCF}"
+echo "Reference file           : ${REF}"
+echo "END SUMMARY"
 echo "========================================================="
 echo ""
+
+
+
 
 
 ##############################################
 # Load modules
 ##############################################
+# If on HPS, load these modules, if not, skip
 load_modules() {
-    module load aws-cli/2.25.5
-    module load bcftools
-    module load conda
+
+    if command -v module &> /dev/null; then
+        module load bcftools || true
+        module load samtools || true
+        module load aws-cli || true
+    fi
+
 }
-
-
 
 ##############################################
 # 1. Download data from AWS
 ##############################################
 download_data() {
 
+    mkdir -p "${HIFI_DIR}"
+    mkdir -p "${ILLUM_DIR}"
+
     # HiFi BAMs
     ## ============================================================================================
     ## CHILD - REF CHM13
-    aws s3 cp --no-sign-request \
-      s3://platinum-pedigree-data/data/hifi/mapped/CHM13/${SAMPLE_CHILD}.CHM13.haplotagged.bam \
-      ${PRJ_DIR}/hifi/${SAMPLE_CHILD}.CHM13.haplotagged.bam
+    echo "[download] Downloading HiFi BAM"
+    aws s3 cp --no-sign-request "${BAM_CHILD}" "${HIFI_DIR}/${NAME_BAM_CHILD}"
 
-    aws s3 cp --no-sign-request \
-      s3://platinum-pedigree-data/data/hifi/mapped/CHM13/${SAMPLE_CHILD}.CHM13.haplotagged.bam.bai \
-      ${PRJ_DIR}/hifi/${SAMPLE_CHILD}.CHM13.haplotagged.bam.bai
+    aws s3 cp --no-sign-request "${BAMIDX_CHILD}" "${HIFI_DIR}/${NAME_BAMIDX_CHILD}"
 
+    # echo "[download] Downloading Illumina VCF"
+    # aws s3 cp --no-sign-request "${VCF_FULL_PATH}" "${NAME_VCF}"
+
+
+    ## =============================================================================================
+    # ## Current not used (TO BE FIXED)
+    ## =============================================================================================
+    ## Hifi BAMS
 
     ## CHILD - REF GRch38
     # aws s3 cp --no-sign-request \
     #   s3://platinum-pedigree-data/data/hifi/mapped/GRCh38/${SAMPLE_CHILD}.GRCh38.haplotagged.bam \
     #   ${PRJ_DIR}/hifi/${SAMPLE_CHILD}.GRCh38.haplotagged.bam
 
-
+    ## CHILD BAM INDEX
     # aws s3 cp --no-sign-request \
     #   s3://platinum-pedigree-data/data/hifi/mapped/GRCh38/${SAMPLE_CHILD}.GRCh38.haplotagged.bam.bai \
     #   ${PRJ_DIR}/hifi/${SAMPLE_CHILD}.GRCh38.haplotagged.bam.bai
 
-    # ## Current not used
-    ## =============================================================================================
-    # # ONT BAMs
+
+    ## # ONT BAMs
     # aws s3 cp --no-sign-request \
     #   s3://platinum-pedigree-data/data/ont/mapped/CHM13/${SAMPLE_CHILD}.minimap2.bam \
     #   ./${SAMPLE_CHILD}.CHM13.minimap2.bam
@@ -253,7 +320,7 @@ download_data() {
     #   s3://platinum-pedigree-data/data/ont/mapped/CHM13/${SAMPLE_CHILD}.minimap2.bam.bai \
     #   ./${SAMPLE_CHILD}.CHM13.minimap2.bam.bai
 
-    ## =============================================================================================
+    
     ## VCF 
     # Pedigree consistent merged small variant calls (truthset) - Not used
     # aws s3 cp --no-sign-request  \
@@ -263,15 +330,13 @@ download_data() {
     # aws s3 cp --no-sign-request  \
     #   s3://platinum-pedigree-data/variants/small_variant_truthset/GRCh38/hq_regions_final.bed.gz \
     #   ./small_variant_truthset/CEPH1463.GRCh38.family-truthset.ov.vcf.gz
-    
-    # Dragen (Illumina) calls 
-    # aws s3 cp --no-sign-request  \
-    # s3://platinum-pedigree-data/variants/small_variants/CHM13/CEPH1463.CHM13.illumina-dragen.oa.vcf.gz \
-    # ${ILLUM_DIR}/CEPH1463.CHM13.illumina-dragen.oa.vcf.gz
 
+    ## # ILLUMINA CALLS
     # aws s3 cp --no-sign-request \
     # s3://platinum-pedigree-data/variants/small_variants/GRCh38/CEPH1463.GRCh38.illumina-dragen.oa.vcf.gz \
     # ${ILLUM_DIR}/CEPH1463.GRCh38.illumina-dragen.oa.vcf.gz
+    ## =============================================================================================
+    
 
 }
 
@@ -295,19 +360,19 @@ module load aws-cli/2.25.5
 
 SAMPLE=${SAMPLE_CHILD}
 PRJ_DIR=${PRJ_DIR}
+HIFI_DIR=${HIFI_DIR}
+ILLUM_DIR=${ILLUM_DIR}
 
-OUT_DIR=\${PRJ_DIR}/hifi
-mkdir -p \${OUT_DIR}
+
+mkdir -p \${HIFI_DIR}
+mkdir -p \${ILLUM_DIR}
+
 
 echo "[download] Downloading HiFi BAM for \${SAMPLE}"
 
-aws s3 cp --no-sign-request \
-  s3://platinum-pedigree-data/data/hifi/mapped/CHM13/\${SAMPLE}.CHM13.haplotagged.bam \
-  \${OUT_DIR}/\${SAMPLE}.CHM13.haplotagged.bam
+aws s3 cp --no-sign-request ${BAM_CHILD} \${HIFI_DIR}/${NAME_BAM_CHILD}
 
-aws s3 cp --no-sign-request \
-  s3://platinum-pedigree-data/data/hifi/mapped/CHM13/\${SAMPLE}.CHM13.haplotagged.bam.bai \
-  \${OUT_DIR}/\${SAMPLE}.CHM13.haplotagged.bam.bai
+aws s3 cp --no-sign-request ${BAMIDX_CHILD} \${HIFI_DIR}/${NAME_BAMIDX_CHILD}
 
 echo "[download] Done"
 EOF
@@ -346,19 +411,19 @@ EOF
 
 
 ##############################################
-# 2. Preprocess VCFs (split mom / child vcfs)
+# 2. Preprocess VCFs (Extract parent and child vcf file from the full vcf)
 ##############################################
 split_vcfs() {
 
     local SAMPLE=$1
     local REFGENOME=$2
-    local infile=$3
+    local INFILE=$3
 
     bcftools view -s "${SAMPLE}" \
-      -Oz -o "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina-dragen.oa.vcf.gz" \
-      "${infile}"
+      -Oz -o "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz" \
+      "${INFILE}"
 
-    tabix -p vcf "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina-dragen.oa.vcf.gz"
+    tabix -p vcf "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz"
 }
 
 
@@ -371,11 +436,11 @@ clean_original_vcf_illumina() {
     local SAMPLE=$1
     local REFGENOME=$2
 
+    local INFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz
+    local OUTFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.unphased.noPS.vcf.gz
 
-    local INFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina-dragen.oa.vcf.gz
-    local OUTFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina-dragen.oa.unphased.noPS.vcf.gz
-
-    echo "[clean_original_vcf] Cleaning ${SAMPLE} (ref file : ${REF})"
+    echo "[clean_original_vcf] Cleaning ${SAMPLE}"
+    echo "(ref file : ${REF})"
 
     bcftools +setGT "${INFILE}" -Ou -- -t a -n u \
     | bcftools annotate -x FORMAT/PS \
@@ -392,11 +457,11 @@ clean_original_vcf_illumina() {
 ## They don't have to be used for phasing as Whatshap will realign things
 norm_and_compare_vcfs(){
 
-    local ILLUM_VCF_CHILD_in=${ILLUM_DIR}/${SAMPLE_CHILD}.CHM13.illumina-dragen.oa.unphased.noPS.vcf.gz
-    local ILLUM_VCF_CHILD_out=${ILLUM_DIR}/${SAMPLE_CHILD}.CHM13.illumina-dragen.oa.unphased.noPS.normed.vcf.gz
+    local ILLUM_VCF_CHILD_in=${ILLUM_DIR}/${SAMPLE_CHILD}.CHM13.illumina.unphased.noPS.vcf.gz
+    local ILLUM_VCF_CHILD_out=${ILLUM_DIR}/${SAMPLE_CHILD}.CHM13.illumina.unphased.noPS.normed.vcf.gz
 
-    local HIFI_VCF_CHILD_in=${HIFI_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.vcf.gz
-    local HIFI_VCF_CHILD_out=${HIFI_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.normed.vcf.gz
+    # local HIFI_VCF_CHILD_in=${HIFI_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.vcf.gz
+    # local HIFI_VCF_CHILD_out=${HIFI_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.normed.vcf.gz
 
     local CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY"
 
@@ -408,16 +473,16 @@ norm_and_compare_vcfs(){
       ${ILLUM_VCF_CHILD_in} \
       -Oz -o ${ILLUM_VCF_CHILD_out}
 
-    echo "Normalizing HiFi VCF (autosomes + X,Y)"
-    bcftools norm \
-      -f ${REF} \
-      -m -any \
-      -r ${CHRS} \
-      ${HIFI_VCF_CHILD_in} \
-      -Oz -o ${HIFI_VCF_CHILD_out}
+    # echo "Normalizing HiFi VCF (autosomes + X,Y)"
+    # bcftools norm \
+    #   -f ${REF} \
+    #   -m -any \
+    #   -r ${CHRS} \
+    #   ${HIFI_VCF_CHILD_in} \
+    #   -Oz -o ${HIFI_VCF_CHILD_out}
 
     bcftools index ${ILLUM_VCF_CHILD_out}
-    bcftools index ${HIFI_VCF_CHILD_out}
+    # bcftools index ${HIFI_VCF_CHILD_out}
 }
 
 
@@ -425,7 +490,7 @@ norm_and_compare_vcfs(){
 # 4. Phase the child's illumina vcf using long reads (Slurm job)
 ##############################################
 generate_phasing_job() {
-    local OUT=./aws-data/variants/small_variants/build_hapl_${SAMPLE_CHILD}.slurm
+    local OUT=./aws-data/build_hapl_${SAMPLE_CHILD}.slurm
 
     cat << EOF > "${OUT}"
 #!/bin/bash
@@ -439,10 +504,12 @@ generate_phasing_job() {
 
 set -euo pipefail
 
-REF=${PRJ_DIR}/reference/chm13v2.0_maskedY_rCRS.fa
+REF=${REF}
 SAMPLE=${SAMPLE_CHILD}
-ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.CHM13.illumina-dragen.oa.unphased.noPS.vcf.gz
-HIFI_BAM=${PRJ_DIR}/hifi/\${SAMPLE}.CHM13.haplotagged.bam
+
+ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+HIFI_BAM=${HIFI_DIR}/${NAME_BAM_CHILD}
+
 module load conda
 conda activate whatshap-env
 
@@ -460,17 +527,8 @@ echo "Done"
 EOF
     # cat "${OUT}"
     chmod +x "${OUT}"
-    
-    # if [[ -n "${DEPENDENCY_JOBID}" ]]; then
-    #     JOBID=$(sbatch --parsable \
-    #         --dependency=afterok:${DEPENDENCY_JOBID} \
-    #         "${OUT}")
-    # else
-    #     JOBID=$(sbatch --parsable "${OUT}")
-    # fi
     sbatch "${OUT}"
     rm "${OUT}"
-    echo "${JOBID}"
 
 }
 
@@ -485,7 +543,7 @@ merge_unphased-parent_phased-child_vcfs() {
     rm -f ./typescript
 
     # Make and move phased vcfs to correct directories
-    local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
 
     mkdir -p ${PHASED_VCF}
@@ -495,14 +553,14 @@ merge_unphased-parent_phased-child_vcfs() {
     mv ./${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
     
     # Index samples before merging
-    bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina-dragen.oa.unphased.noPS.vcf.gz
+    bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
     bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.vcf.gz
 
     # Merge samples into one vcf
     echo "merging samples"
     bcftools merge -m none -Oz \
         -o ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz \
-        ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina-dragen.oa.unphased.noPS.vcf.gz \
+        ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz \
         ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.vcf.gz
 
     bcftools index ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz #index
@@ -512,7 +570,7 @@ merge_unphased-parent_phased-child_vcfs() {
 
 
 extract_phased_snp() {
-    local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
     local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
 
@@ -550,7 +608,7 @@ extract_phased_snp() {
 
 ## I think I should apply loose threshold here so that I can get more candidates?
 count_shared_alleles_per_PS_block() {
-  local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+  local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
   local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
   local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis
 
@@ -574,7 +632,7 @@ count_shared_alleles_per_PS_block() {
 }
 
 filter_dnm_candidates() {
-    local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
     local BED=${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed
@@ -641,8 +699,8 @@ validate_dnmc_with_hifi_reads(){
 
   conda activate whatshap-env
   
-  local HIFI_BAM=${PRJ_DIR}/hifi/${SAMPLE_CHILD}.CHM13.haplotagged.bam
-  local DNM_BED=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed
+  local HIFI_BAM=${PRJ_DIR}/hifi/${SAMPLE_CHILD}.${NAME_REFERENCE}.haplotagged.bam
+  local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed
 
   python ${PRJ_DIR}/variants/src/dnmc_readcheck.py \
   ${SAMPLE_CHILD} \
@@ -666,8 +724,8 @@ validate_dnmc_with_hifi_reads(){
 ##############################################
 regenerate_phasing_job() {
     # local DEPENDENCY_JOBID=$1
-    local OUT=./aws-data/variants/small_variants/build_hapl_${SAMPLE_CHILD}.slurm
-    local DNM_BED=${PRJ_DIR}/variants/small_variants/NA12879_hifi_child_only_filtered_dnmc.bed
+    local OUT=./aws-data/build_hapl_${SAMPLE_CHILD}.slurm
+    local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_hifi_child_only_filtered_dnmc.bed
 
     cat << EOF > "${OUT}"
 #!/bin/bash
@@ -686,12 +744,12 @@ module load conda
 conda activate whatshap-env
 
 
-REF=${PRJ_DIR}/reference/chm13v2.0_maskedY_rCRS.fa
+REF=${REF}
 SAMPLE=${SAMPLE_CHILD}
 v=${v}
 
-ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.CHM13.illumina-dragen.oa.unphased.noPS.vcf.gz
-HIFI_BAM=${PRJ_DIR}/hifi/\${SAMPLE}.CHM13.haplotagged.bam
+ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+HIFI_BAM=${HIFI_DIR}/${NAME_BAM_CHILD}
 
 REGIONS_BED=\${SAMPLE}_dnm_plusminus\${v}kb.bed
 LOCAL_VCF=\${SAMPLE}_dnm_plusminus\${v}kb.vcf.gz
@@ -721,13 +779,6 @@ echo "Done local DNM re-phasing"
 EOF
 
     chmod +x "${OUT}"
-    # if [[ -n "${DEPENDENCY_JOBID}" ]]; then
-    #     JOBID=$(sbatch --parsable \
-    #         --dependency=afterok:${DEPENDENCY_JOBID} \
-    #         "${OUT}")
-    # else
-    #     JOBID=$(sbatch --parsable "${OUT}")
-    # fi
     sbatch "${OUT}"
     rm "${OUT}"
 }
@@ -741,7 +792,7 @@ remerge_unphased-parent_phased-child_vcfs() {
     rm -f ./typescript
 
     # Make and move phased vcfs to correct directories
-    local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
 
 
@@ -752,14 +803,14 @@ remerge_unphased-parent_phased-child_vcfs() {
     mv -f ./${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
     
     # Index samples before merging
-    bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina-dragen.oa.unphased.noPS.vcf.gz
+    bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz
     bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.${v}kb.vcf.gz
 
     # Merge samples into one vcf
     echo "merging samples"
     bcftools merge -m none -Oz \
         -o ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.${v}kb.vcf.gz \
-        ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina-dragen.oa.unphased.noPS.vcf.gz \
+        ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz \
         ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.${v}kb.vcf.gz
 
     bcftools index ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.${v}kb.vcf.gz #index
@@ -768,7 +819,7 @@ remerge_unphased-parent_phased-child_vcfs() {
 
 
 reextract_phased_snp() {
-    local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
     local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
     
@@ -804,7 +855,7 @@ reextract_phased_snp() {
 
 
 recount_shared_alleles_per_PS_block() {
-  local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+  local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
   local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
   local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis
   local RECOUNT="T"
@@ -831,7 +882,7 @@ recount_shared_alleles_per_PS_block() {
 }
 
 clean_up(){
-  local SLICE_DIR=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/sliced/
+  local SLICE_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/sliced/
   
   mkdir -p ${SLICE_DIR}
 
@@ -842,7 +893,7 @@ clean_up(){
 
 
 calculate_callable_genome() {
-  local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+  local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
   local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
   local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis
   local POST_ANALYSIS=${PHASED_VCF}/mismatch_analysis/denum_calcul
@@ -869,7 +920,7 @@ calculate_callable_genome() {
 
 
 REfilter_dnm_candidates() {
-    local PHASED_VCF=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis/denum_calcul
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
     local BED=${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed
@@ -936,7 +987,7 @@ REvalidate_dnmc_with_hifi_reads(){
   conda activate whatshap-env
   
   local HIFI_BAM=${PRJ_DIR}/hifi/${SAMPLE_CHILD}.CHM13.haplotagged.bam
-  local DNM_BED=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed
+  local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed
   local VERBOSE="F"
   python ${PRJ_DIR}/variants/src/dnmc_readcheck.py \
   ${SAMPLE_CHILD} \
@@ -950,7 +1001,7 @@ REvalidate_dnmc_with_hifi_reads(){
 
 final_summary() {
 
-    local WORKING_DIR=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local WORKING_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local dnmc_file=${WORKING_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv
     local nb_qualified_snps=${WORKING_DIR}/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.tsv
     local callable_genome_file=${WORKING_DIR}/mismatch_analysis/denum_calcul/callable_genome.txt
@@ -1002,7 +1053,7 @@ final_summary() {
     echo "Window size (bp)         : ${WINDW}"
     echo "Window size (kb)         : ${v}"
     echo "Alt read count (LR)      : ${ALT_READ_COUNT}"
-    echo
+    echo "------------------------------------------------"
     echo "DNMC count               : ${dnmc_count}"
     echo "Number of snps qualified : ${qualified_count}"
     echo "Number of snps sampled   : ${total_sampled}"
@@ -1014,7 +1065,7 @@ final_summary() {
 
 final_cleanup(){
     
-    local WORKING_DIR=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local WORKING_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     
     # Remove all intermediate files
     rm ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_hifiOnly*
@@ -1041,15 +1092,15 @@ main() {
             echo "========== PART 1: Data preparation =========="
 
             # Download data from AWS
-            download_hifi_data_job
+            # download_hifi_data_job
 
             # Create a vcf for each individual
-            split_vcfs ${SAMPLE_PARENT} CHM13 ${ILLUM_DIR}/CEPH1463.CHM13.illumina-dragen.oa.vcf.gz
-            split_vcfs ${SAMPLE_CHILD} CHM13 ${ILLUM_DIR}/CEPH1463.CHM13.illumina-dragen.oa.vcf.gz
+            split_vcfs ${SAMPLE_PARENT} ${NAME_REFERENCE} ${ILLUM_DIR}/${NAME_VCF_FILE}
+            split_vcfs ${SAMPLE_CHILD} ${NAME_REFERENCE} ${ILLUM_DIR}/${NAME_VCF_FILE}
 
-            # Remove "PS" tags or "|" in genotype
-            clean_original_vcf_illumina ${SAMPLE_CHILD} CHM13
-            clean_original_vcf_illumina ${SAMPLE_PARENT} CHM13
+            # # Remove "PS" tags or "|" in genotype
+            clean_original_vcf_illumina ${SAMPLE_CHILD} ${NAME_REFERENCE}
+            clean_original_vcf_illumina ${SAMPLE_PARENT} ${NAME_REFERENCE}
 
             # Normalize two sources of vcf in the child ( Illumina / Hifi) - optional
             # norm_and_compare_vcfs
