@@ -204,11 +204,9 @@ mkdir -p ${REF_DIR}
 # Load data source configuration
 ##############################################
 # source.txt lives in data/ same level as this script main.sh
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_FILE="${SCRIPT_DIR}/data/source.txt"
-
-DEPENDENCIES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEPENDENCIES_FILE="${SCRIPT_DIR}/environment.yml"
+WORKING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_FILE="${WORKING_DIR}/data/source.txt"
+DEPENDENCIES_FILE="${WORKING_DIR}/environment.yml"
 
 ## Read the source file
 if [[ ! -f "${SOURCE_FILE}" ]]; then
@@ -548,7 +546,7 @@ extract_phased_snp() {
     ## Fix the extract file to tab delimited format
     conda activate whatshap-env
 
-    python ${PRJ_DIR}/variants/src/fix_PhaseSet.py \
+    python ${WORKING_DIR}/src/fix_PhaseSet.py \
       ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv \
       ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps_fixed.tsv
     
@@ -573,7 +571,7 @@ count_shared_alleles_per_PS_block() {
   
   echo " Counting alleles per haplotype block"
   conda activate whatshap-env
-  python ${PRJ_DIR}/variants/src/count_mismatches.py \
+  python ${WORKING_DIR}/src/count_mismatches.py \
     ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv \
     ${MISMATCH_ANALYSIS} \
     ${MIN_RDEPTH} \
@@ -659,7 +657,7 @@ validate_dnmc_with_hifi_reads(){
   local HIFI_BAM=${PRJ_DIR}/hifi/${SAMPLE_CHILD}.${NAME_REFERENCE}.haplotagged.bam
   local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed
 
-  python ${PRJ_DIR}/variants/src/dnmc_readcheck.py \
+  python ${WORKING_DIR}/src/dnmc_readcheck.py \
   ${SAMPLE_CHILD} \
   ${HIFI_BAM} \
   ${DNM_BED} \
@@ -796,7 +794,7 @@ reextract_phased_snp() {
  
     ## fix again the extracted format into tab delim file
     conda activate whatshap-env
-    python ${PRJ_DIR}/variants/src/fix_PhaseSet.py \
+    python ${WORKING_DIR}/src/fix_PhaseSet.py \
       ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps.tsv \
       ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps_fixed.tsv
     
@@ -819,7 +817,7 @@ recount_shared_alleles_per_PS_block() {
   local DNMC_FILE=${PHASED_VCF}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.tsv
   
   conda activate whatshap-env
-  python "${PRJ_DIR}/variants/src/count_mismatches.py" \
+  python "${WORKING_DIR}/src/count_mismatches.py" \
   "${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps.tsv" \
   "${MISMATCH_ANALYSIS}" \
   "${MIN_RDEPTH}" \
@@ -857,7 +855,7 @@ calculate_callable_genome() {
   
   mkdir -p ${POST_ANALYSIS}
   conda activate whatshap-env
-  python "${PRJ_DIR}/variants/src/callable_genome.py" \
+  python "${WORKING_DIR}/src/callable_genome.py" \
   "${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv" \
   "${POST_ANALYSIS}" \
   "${MIN_RDEPTH}" \
@@ -946,7 +944,7 @@ REvalidate_dnmc_with_hifi_reads(){
   local HIFI_BAM=${PRJ_DIR}/hifi/${SAMPLE_CHILD}.CHM13.haplotagged.bam
   local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed
   local VERBOSE="F"
-  python ${PRJ_DIR}/variants/src/dnmc_readcheck.py \
+  python ${WORKING_DIR}/src/dnmc_readcheck.py \
   ${SAMPLE_CHILD} \
   ${HIFI_BAM} \
   ${DNM_BED} \
