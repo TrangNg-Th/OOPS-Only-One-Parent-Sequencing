@@ -193,6 +193,7 @@ v=$((WINDW / 1000))
 
 
 # Make directory
+mkdir -p ${PRJ_DIR}
 mkdir -p ${ILLUM_DIR}
 mkdir -p ${HIFI_DIR}
 mkdir -p ${REF_DIR}
@@ -381,12 +382,9 @@ EOF
 
     ## Extract the id of the job
 
-    # JOBID=$(sbatch --parsable "${OUT}")
-    sbatch "${OUT}"
-
-    # Communicate it with next process
-    # echo "${JOBID}"
-
+    JOBID=$(sbatch --parsable "${OUT}")
+    echo "${JOBID}"
+    # sbatch "${OUT}"
     rm "${OUT}"
 }
 
@@ -413,41 +411,84 @@ EOF
 ##############################################
 # 2. Preprocess VCFs (Extract parent and child vcf file from the full vcf)
 ##############################################
-split_vcfs() {
 
-    local SAMPLE=$1
-    local REFGENOME=$2
-    local INFILE=$3
+generate_preprocessing_job() {
 
-    bcftools view -s "${SAMPLE}" \
-      -Oz -o "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz" \
-      "${INFILE}"
+    local DEPENDENCY_JOBID=$1
+    local OUT=./preprocess_${SAMPLE_CHILD}.slurm
 
-    tabix -p vcf "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz"
+    cat << EOF > "${OUT}"
+#!/bin/bash
+#SBATCH -J preprocess_${SAMPLE_CHILD}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --time=02:00:00
+#SBATCH --mem=8G
+#SBATCH -A r00379
+#SBATCH --dependency=afterok:${DEPENDENCY_JOBID}
+
+set -euo pipefail
+
+module load bcftools
+
+# Split VCFs
+bcftools view -s ${SAMPLE_PARENT} -Oz -o ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.vcf.gz ${ILLUM_DIR}/${NAME_VCF_FILE}
+bcftools view -s ${SAMPLE_CHILD} -Oz -o ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz ${ILLUM_DIR}/${NAME_VCF_FILE}
+
+# Index
+tabix -p vcf ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.vcf.gz
+tabix -p vcf ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz
+
+# Clean PS tags
+bcftools +setGT ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz -Ou -- -t a -n u \
+| bcftools annotate -x FORMAT/PS \
+| bcftools view -Oz -o ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+
+bcftools index ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+
+EOF
+
+    chmod +x "${OUT}"
+    sbatch "${OUT}"
+    rm "${OUT}"
 }
 
 
+# split_vcfs() {
 
-#####################################################3
-## 3. Preprocess vcf files (remove PS, phasing artifacts)
-#######################################################
-clean_original_vcf_illumina() {
+#     local SAMPLE=$1
+#     local REFGENOME=$2
+#     local INFILE=$3
 
-    local SAMPLE=$1
-    local REFGENOME=$2
+#     bcftools view -s "${SAMPLE}" \
+#       -Oz -o "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz" \
+#       "${INFILE}"
 
-    local INFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz
-    local OUTFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.unphased.noPS.vcf.gz
+#     tabix -p vcf "${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz"
+# }
 
-    echo "[clean_original_vcf] Cleaning ${SAMPLE}"
-    echo "(ref file : ${REF})"
 
-    bcftools +setGT "${INFILE}" -Ou -- -t a -n u \
-    | bcftools annotate -x FORMAT/PS \
-    | bcftools view -Oz -o "${OUTFILE}"
+# #####################################################3
+# ## 3. Preprocess vcf files (remove PS, phasing artifacts)
+# #######################################################
+# clean_original_vcf_illumina() {
 
-    bcftools index "${OUTFILE}"
-}
+#     local SAMPLE=$1
+#     local REFGENOME=$2
+
+#     local INFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.vcf.gz
+#     local OUTFILE=${ILLUM_DIR}/${SAMPLE}.${REFGENOME}.illumina.unphased.noPS.vcf.gz
+
+#     echo "[clean_original_vcf] Cleaning ${SAMPLE}"
+#     echo "(ref file : ${REF})"
+
+#     bcftools +setGT "${INFILE}" -Ou -- -t a -n u \
+#     | bcftools annotate -x FORMAT/PS \
+#     | bcftools view -Oz -o "${OUTFILE}"
+
+#     bcftools index "${OUTFILE}"
+# }
 
 
 ###################################################
@@ -1092,15 +1133,19 @@ main() {
             echo "========== PART 1: Data preparation =========="
 
             # Download data from AWS
-            # download_hifi_data_job
+            DOWNLOAD_JOBID=$(download_hifi_data_job)
+            echo "Download job submitted: ${DOWNLOAD_JOBID}"
 
-            # Create a vcf for each individual
-            split_vcfs ${SAMPLE_PARENT} ${NAME_REFERENCE} ${ILLUM_DIR}/${NAME_VCF_FILE}
-            split_vcfs ${SAMPLE_CHILD} ${NAME_REFERENCE} ${ILLUM_DIR}/${NAME_VCF_FILE}
+            ## Processing vcfs
+            generate_preprocessing_job "${DOWNLOAD_JOBID}"
 
-            # # Remove "PS" tags or "|" in genotype
-            clean_original_vcf_illumina ${SAMPLE_CHILD} ${NAME_REFERENCE}
-            clean_original_vcf_illumina ${SAMPLE_PARENT} ${NAME_REFERENCE}
+            # # Create a vcf for each individual
+            # split_vcfs ${SAMPLE_PARENT} ${NAME_REFERENCE} ${ILLUM_DIR}/${NAME_VCF_FILE}
+            # split_vcfs ${SAMPLE_CHILD} ${NAME_REFERENCE} ${ILLUM_DIR}/${NAME_VCF_FILE}
+
+            # # # Remove "PS" tags or "|" in genotype
+            # clean_original_vcf_illumina ${SAMPLE_CHILD} ${NAME_REFERENCE}
+            # clean_original_vcf_illumina ${SAMPLE_PARENT} ${NAME_REFERENCE}
 
             # Normalize two sources of vcf in the child ( Illumina / Hifi) - optional
             # norm_and_compare_vcfs
