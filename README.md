@@ -46,7 +46,7 @@ Each stage can be run independently.
 
 ```
 .
-├── pipeline.sh
+├── main.sh
 ├── README.md
 └── variants/
     └── src/

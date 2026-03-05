@@ -11,38 +11,90 @@ set -euo pipefail
 # Configuration (user input)
 ##############################################
 usage() {
-  cat << EOF
+cat << EOF
 
-  Only One Parent Sequencing Mutation Call Pipeline
-  =====================================================
+Only One Parent Sequencing Mutation Call Pipeline
+=================================================
 
-  Required arguments : 
-    --prj-dir           Project root directory
-    --sample-child      Child sample ID in the VCF (e.g. NA12879)
-    --sample-parent     Parent sample ID in the VCF (e.g. NA12878)
+This pipeline performs:
+  1. HiFi download + Illumina preprocessing
+  2. Phasing with long reads
+  3. De novo mutation (DNM) detection
+  4. Local rephasing refinement
+  5. Callable genome estimation
+  6. Final mutation rate calculation
+  7. Optional cleanup of intermediate files
 
-  Optional arguments (with defaults):
-    --cpus              Number of CPUs for phasing job (default: 8)
-    --time              Slurm walltime (default: 4:00:00)
-    --min-rdepth        Minimum read depth (default: 15)
-    --max-rdepth        Maximum read depth (default: 50)
-    --gt-qual           Minimum genotype quality (default: 30)
-    --nv-quantile       Noise quantile threshold (default: 0.75)
-    --mm-diff-min       Minimum mismatch difference threshold (default: 0.1)
-    --min-base-qual     Minimum base quality for LR validation (default: 20)
-    --min-map-qual      Minimum mapping quality for LR validation (default: 20)
-    --window            Window size around DNM (default: 20000)
-    --alt-read-count    Minimum ALT supporting long reads (default: 8)
-    --verbose           T/F for verbose LR validation (default: T)
+------------------------------------------------------------------
+Required arguments:
+------------------------------------------------------------------
+  --prj-dir           Project root directory
+  --sample-child      Child sample ID (e.g. NA12879)
+  --sample-parent     Parent sample ID (e.g. NA12878)
 
-  Example:
-    ./pipeline.sh \
-      --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
-      --sample-child NA12879 \
-      --sample-parent NA12878
+------------------------------------------------------------------
+Execution control:
+------------------------------------------------------------------
+  --part <N ...>      Run specific pipeline parts
+                      Example: --part 1 2 2b
+
+  --all               Run full pipeline:
+                      Parts: 1 2 2b 3 3b 4 5
+
+Pipeline Parts:
+  1   Data preparation (download + VCF preprocessing)
+  2   Initial phasing (Whatshap)
+  2b  First DNM detection
+  3   Local rephasing around DNMs
+  3b  Refined DNM detection
+  4   Callable genome calculation + mutation rate
+  5   Remove intermediate files
+
+------------------------------------------------------------------
+Optional parameters (with defaults):
+------------------------------------------------------------------
+  --cpus              CPUs for phasing job (default: 8)
+  --time              Slurm walltime (default: 4:00:00)
+  --min-rdepth        Minimum read depth (default: 15)
+  --max-rdepth        Maximum read depth (default: 50)
+  --gt-qual           Minimum genotype quality (default: 30)
+  --nv-quantile       Variant count quantile threshold (default: 0.75)
+  --mm-diff-min       Minimum mismatch difference threshold (default: 0.1)
+  --min-base-qual     Minimum base quality for LR validation (default: 20)
+  --min-map-qual      Minimum mapping quality for LR validation (default: 20)
+  --window            Window size around DNM in bp (default: 20000)
+  --alt-read-count    Minimum ALT-supporting long reads (default: 8)
+  --verbose           T/F verbose long-read validation (default: T)
+
+------------------------------------------------------------------
+Examples:
+------------------------------------------------------------------
+
+Run entire pipeline:
+  ./pipeline.sh \
+    --all \
+    --prj-dir /path/to/project \
+    --sample-child NA12879 \
+    --sample-parent NA12878
+
+Run only callable genome + final summary:
+  ./pipeline.sh \
+    --part 4 \
+    --prj-dir /path/to/project \
+    --sample-child NA12879 \
+    --sample-parent NA12878
+
+Run data prep + phasing only:
+  ./pipeline.sh \
+    --part 1 2 \
+    --prj-dir /path/to/project \
+    --sample-child NA12879 \
+    --sample-parent NA12878
+
+------------------------------------------------------------------
 
 EOF
-  exit 1
+exit 1
 }
 
 ##############################################
@@ -82,7 +134,7 @@ while [[ $# -gt 0 ]]; do
             done
             ;;
         --all)
-            PARTS=("1" "2" "2b" "3" "3b" "4")
+            PARTS=("1" "2" "2b" "3" "3b" "4" "5")
             shift
             ;;
 
@@ -147,36 +199,9 @@ echo "Window size (bp)         : ${WINDW}"
 echo "Window size (kb)         : ${v}"
 echo "Alt read count (LR)      : ${ALT_READ_COUNT}"
 echo "Verbose LR validation    : ${VERBOSE}"
+
 echo "========================================================="
 echo ""
-
-
-## =================================================
-
-
-
-PRJ_DIR="/N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data"
-CPUS=8
-TIME=4:00:00
-SAMPLE_CHILD=NA12879
-SAMPLE_PARENT=NA12878 ## 78: mom, 77: dad
-MIN_RDEPTH=15
-MAX_RDEPTH=50
-ILLUM_DIR=${PRJ_DIR}/variants/small_variants/illumina-dragen
-REF=${PRJ_DIR}/reference/chm13v2.0_maskedY_rCRS.fa
-HIFI_DIR=${PRJ_DIR}/variants/small_variants/hifi
-GT_QUAL=30
-NV_QUANTILE=0.75
-MM_DIFF_MIN=0.1
-MIN_BASE_QUAL=20
-MIN_MAP_QUAL=20
-WINDW=20000
-v=$((WINDW / 1000))
-
-RECOUNT=T
-NOTRECOUNT=F ## give alternative option to count mismatches 
-VERBOSE=T  # debugging print for dnmc_readcheck.py to exploit LR bam
-ALT_READ_COUNT=8 # number of alternative read count on long read data
 
 
 ##############################################
@@ -634,12 +659,6 @@ validate_dnmc_with_hifi_reads(){
 ## Second validation step
 ## ======================================================================================
 
-
-## =====Remove later========
-## check all the candidates suggested
-
-# samtools mpileup -l ../variants/small_variants/NA12879_phasedvcf/mismatch_analysis/NA12878_NA12879_dnmc.bed \
-# NA12879.CHM13.haplotagged.bam -f ../reference/chm13v2.0_maskedY_rCRS.fa 
 ## ======================================================================
 
 
@@ -918,7 +937,7 @@ REvalidate_dnmc_with_hifi_reads(){
   
   local HIFI_BAM=${PRJ_DIR}/hifi/${SAMPLE_CHILD}.CHM13.haplotagged.bam
   local DNM_BED=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed
-
+  local VERBOSE="F"
   python ${PRJ_DIR}/variants/src/dnmc_readcheck.py \
   ${SAMPLE_CHILD} \
   ${HIFI_BAM} \
@@ -928,6 +947,81 @@ REvalidate_dnmc_with_hifi_reads(){
   ${WINDW} ${ALT_READ_COUNT} ${VERBOSE}
 }
 
+
+final_summary() {
+
+    local WORKING_DIR=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    local dnmc_file=${WORKING_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv
+    local nb_qualified_snps=${WORKING_DIR}/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.tsv
+    local callable_genome_file=${WORKING_DIR}/mismatch_analysis/denum_calcul/callable_genome.txt
+
+    # Rename final DNMC file
+    mv ${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.20kb.tsv \
+       ${dnmc_file}
+
+    # ===================== Extract numbers =====================
+
+    local dnmc_count
+    dnmc_count=$(wc -l < "${dnmc_file}")
+
+    local qualified_count
+    qualified_count=$(wc -l < "${nb_qualified_snps}")
+
+    local total_sampled
+    total_sampled=$(grep "total_sampled_snps" "${callable_genome_file}" | awk '{print $2}')
+
+    local callable_bases
+    callable_bases=$(grep "total_callable_bases" "${callable_genome_file}" | awk '{print $2}')
+
+    # ===================== Mutation rate calculation =====================
+    # mutation_rate = DNM / [(qualified / total_sampled) * callable_bases]
+
+    local mutation_rate="NA"
+
+    if [[ -n "${total_sampled}" && -n "${callable_bases}" && "${total_sampled}" -gt 0 ]]; then
+        mutation_rate=$(awk -v d="${dnmc_count}" \
+                            -v q="${qualified_count}" \
+                            -v s="${total_sampled}" \
+                            -v c="${callable_bases}" \
+                            'BEGIN { printf "%.6e", d / ((q/s) * c) }')
+    fi
+
+    # ===================== Print summary =====================
+
+    echo "================ Final results summary ================="
+    echo "De novo candidate        : ${dnmc_file}"
+    echo "Child sample             : ${SAMPLE_CHILD}"
+    echo "Parent sample            : ${SAMPLE_PARENT}"
+    echo "Min read depth           : ${MIN_RDEPTH}"
+    echo "Max read depth           : ${MAX_RDEPTH}"
+    echo "Genotype quality cutoff  : ${GT_QUAL}"
+    echo "Noise quantile           : ${NV_QUANTILE}"
+    echo "Mismatch diff threshold  : ${MM_DIFF_MIN}"
+    echo "Min base quality (LR)    : ${MIN_BASE_QUAL}"
+    echo "Min mapping quality (LR) : ${MIN_MAP_QUAL}"
+    echo "Window size (bp)         : ${WINDW}"
+    echo "Window size (kb)         : ${v}"
+    echo "Alt read count (LR)      : ${ALT_READ_COUNT}"
+    echo
+    echo "DNMC count               : ${dnmc_count}"
+    echo "Number of snps qualified : ${qualified_count}"
+    echo "Number of snps sampled   : ${total_sampled}"
+    echo "Callable genome size     : ${callable_bases}"
+    echo "Mutation rate            : ${mutation_rate}"
+    echo "========================================================="
+    echo
+}
+
+final_cleanup(){
+    
+    local WORKING_DIR=${PRJ_DIR}/variants/small_variants/${SAMPLE_CHILD}_phasedvcf
+    
+    # Remove all intermediate files
+    rm ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_hifiOnly*
+    rm ${WORKING_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_mismatch*
+    rm ${WORKING_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc*
+
+}
 
 ##################################################
 # Main
@@ -1038,6 +1132,20 @@ main() {
 
             # Apply another filter - long read filter to those snps ==> see how many snps can we obtain
             REvalidate_dnmc_with_hifi_reads
+
+            # Give a final summary results
+            final_summary
+        fi
+
+
+        ############################################
+        # PART 5 — Clean up everything
+        ############################################
+        if [[ "$PART" == "5" ]]; then
+            echo "========== PART 5: Removing all the intermediate files  =========="
+            
+           # Clean up all intermediate files
+           final_cleanup
         fi
 
 
@@ -1045,3 +1153,6 @@ main() {
 
     echo "Pipeline finished."
 }
+
+
+main "$@"
