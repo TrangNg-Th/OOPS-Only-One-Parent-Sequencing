@@ -1,6 +1,7 @@
 #!/bin/bash
-export PS1=${PS1:-}
-set -euo pipefail
+
+set -eo pipefail
+export PS1=${PS1:-}   # <-- ADD THIS
 
 
 ################################################################################
@@ -274,6 +275,7 @@ load_modules() {
         module load bcftools || true
         module load samtools || true
         module load aws-cli || true
+        module load conda || true
     fi
 
 }
@@ -367,6 +369,7 @@ generate_preprocessing_job() {
 #SBATCH --dependency=afterok:${DEPENDENCY_JOBID}
 
 set -euo pipefail
+export PS1=${PS1:-}  
 
 module load bcftools
 
@@ -442,7 +445,7 @@ norm_and_compare_vcfs(){
 # 4. Phase the child's illumina vcf using long reads (Slurm job)
 ##############################################
 generate_phasing_job() {
-    local OUT=./aws-data/build_hapl_${SAMPLE_CHILD}.slurm
+    local OUT=${PRJ_DIR}/build_hapl_${SAMPLE_CHILD}.slurm
 
     cat << EOF > "${OUT}"
 #!/bin/bash
@@ -679,7 +682,7 @@ validate_dnmc_with_hifi_reads(){
 ##############################################
 regenerate_phasing_job() {
     # local DEPENDENCY_JOBID=$1
-    local OUT=./aws-data/build_hapl_${SAMPLE_CHILD}.slurm
+    local OUT=${PRJ_DIR}/build_hapl_${SAMPLE_CHILD}.slurm
     local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_hifi_child_only_filtered_dnmc.bed
 
     cat << EOF > "${OUT}"
@@ -693,6 +696,7 @@ regenerate_phasing_job() {
 #SBATCH -A r00379
 
 set -euo pipefail
+export PS1=${PS1:-}  
 
 module load bcftools
 module load conda
@@ -742,6 +746,7 @@ EOF
 
 
 remerge_unphased-parent_phased-child_vcfs() {
+    echo "Re-merging parent vcf and child vcf"
     # clean up
     rm -f ./slurm*out
     rm -f ./typescript
@@ -755,14 +760,14 @@ remerge_unphased-parent_phased-child_vcfs() {
     mkdir -p ${MERGED_PHASED_VCF}
 
     # move child vcf to correct place
-    mv -f ./${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
+    ls ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_hifiOnly* 1>/dev/null 2>&1 && \
+        mv -f ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
     
     # Index samples before merging
     bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz
     bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.${v}kb.vcf.gz
 
     # Merge samples into one vcf
-    echo "merging samples"
     bcftools merge -m none -Oz \
         -o ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.${v}kb.vcf.gz \
         ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz \
@@ -777,6 +782,11 @@ reextract_phased_snp() {
     local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
     local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
+
+    module load bcftools 
+    module load conda
+
+    echo "Reextracting phased snps"
     
 
     mkdir -p ${EXTRACT_HAPLBLOCK}
@@ -815,6 +825,8 @@ recount_shared_alleles_per_PS_block() {
   local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis
   local RECOUNT="T"
   local DNMC_FILE=${PHASED_VCF}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.tsv
+
+  echo "Recounting mismatches in PS blocks"
   
   conda activate whatshap-env
   python "${WORKING_DIR}/src/count_mismatches.py" \
@@ -1020,12 +1032,12 @@ final_summary() {
 
 final_cleanup(){
     
-    local WORKING_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
+    local WORKING_DIR2=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     
     # Remove all intermediate files
-    rm ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_hifiOnly*
-    rm ${WORKING_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_mismatch*
-    rm ${WORKING_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc*
+    rm ${WORKING_DIR2}/${SAMPLE_CHILD}.illumVCF_hifiOnly*
+    rm ${WORKING_DIR2}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_mismatch*
+    rm ${WORKING_DIR2}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc*
 
 }
 

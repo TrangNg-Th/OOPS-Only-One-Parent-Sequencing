@@ -224,15 +224,17 @@ if RECOUNT != "T":
 merged = df.merge(summary_df, on=["chrom", "PS_child"], how="inner")
 
 # load the suggested candidates (only use for RECOUNT)
-dnmc_file = pd.read_csv(DNMC_FILE, sep="\t", dtype=str)  
+dnmc_set = set()
 
-dnmc_set = set(
-    zip(
-        dnmc_file["#[1]CHROM"],
-        dnmc_file["[2]POS"].astype(int)
+if RECOUNT == "T":
+    dnmc_file = pd.read_csv(DNMC_FILE, sep="\t", dtype=str)
+
+    dnmc_set = set(
+        zip(
+            dnmc_file["#[1]CHROM"],
+            dnmc_file["[2]POS"].astype(int)
+        )
     )
-)
-
 
 # Save results
 dnm_records = []
