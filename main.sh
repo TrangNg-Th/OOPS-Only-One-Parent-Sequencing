@@ -1092,6 +1092,7 @@ main() {
         if [[ "$PART" == "2" ]]; then
             echo "========== PART 2: Initial phasing =========="
             generate_phasing_job  # Phasing SLURM JOB, Usually take 4 hours
+        
         fi
 
 
@@ -1102,7 +1103,7 @@ main() {
             echo "========== PART 2B: Merge + first DNM detection =========="
 
             # merge phased vcf of the child to unphased vcf of parent
-            # merge_unphased-parent_phased-child_vcfs
+            merge_unphased-parent_phased-child_vcfs
 
             # Extract only positions where there's a Phase Set (PS) associated
             extract_phased_snp
@@ -1112,9 +1113,11 @@ main() {
 
             # Create a list of dnm candidates
             filter_dnm_candidates
+     
 
             # Additional filters with hifi suppport
             validate_dnmc_with_hifi_reads
+
         fi
 
 
@@ -1125,6 +1128,7 @@ main() {
             echo "========== PART 3: Local rephasing =========="
             # Rephase the areas around the dnmc
             regenerate_phasing_job
+    
         fi
 
 
@@ -1145,6 +1149,8 @@ main() {
 
             # Cleanup
             clean_up
+
+            echo "Done part 3B"
         fi
 
 
