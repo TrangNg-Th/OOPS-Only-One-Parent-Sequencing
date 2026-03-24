@@ -114,7 +114,7 @@ exit 1
 ##############################################
 
 CPUS=8
-TIME="4:00:00"
+TIME="6:00:00"
 MIN_RDEPTH=15
 MAX_RDEPTH=50
 GT_QUAL=30
@@ -237,26 +237,26 @@ REF="${REF:-${REF_DIR}/${NAME_REFERENCE_FILE}}"
 ##############################################
 
 echo "================ Pipeline Configuration ================"
-echo "Project directory        : ${PRJ_DIR}"
-echo "Child sample             : ${SAMPLE_CHILD}"
-echo "Parent sample            : ${SAMPLE_PARENT}"
-echo "CPUs                     : ${CPUS}"
-echo "Walltime                 : ${TIME}"
-echo "Min read depth           : ${MIN_RDEPTH}"
-echo "Max read depth           : ${MAX_RDEPTH}"
-echo "Genotype quality cutoff  : ${GT_QUAL}"
-echo "Noise quantile           : ${NV_QUANTILE}"
-echo "Mismatch diff threshold  : ${MM_DIFF_MIN}"
-echo "Min base quality (LR)    : ${MIN_BASE_QUAL}"
-echo "Min mapping quality (LR) : ${MIN_MAP_QUAL}"
-echo "Window size (bp)         : ${WINDW}"
-echo "Window size (kb)         : ${v}"
-echo "Alt read count (LR)      : ${ALT_READ_COUNT}"
-echo "Verbose LR validation    : ${VERBOSE}"
-echo "Data source              : ${SOURCE_FILE}"
-echo "Bam file of the child    : ${HIFI_DIR}/${NAME_BAM_CHILD}"
-echo "Vcf file                 : ${NAME_VCF}"
-echo "Reference file           : ${REF}"
+echo "Project directory                     : ${PRJ_DIR}"
+echo "Child sample                          : ${SAMPLE_CHILD}"
+echo "Parent sample                         : ${SAMPLE_PARENT}"
+echo "CPUs                                  : ${CPUS}"
+echo "Walltime                              : ${TIME}"
+echo "Min read depth                        : ${MIN_RDEPTH}"
+echo "Max read depth                        : ${MAX_RDEPTH}"
+echo "Genotype quality cutoff               : ${GT_QUAL}"
+echo "Quantile of nbr variants per blocks   : ${NV_QUANTILE}"
+echo "Mismatch diff threshold               : ${MM_DIFF_MIN}"
+echo "Min base quality (LR)                 : ${MIN_BASE_QUAL}"
+echo "Min mapping quality (LR)              : ${MIN_MAP_QUAL}"
+echo "Window size (bp)                      : ${WINDW}"
+echo "Window size (kb)                      : ${v}"
+echo "Alt read count (LR)                   : ${ALT_READ_COUNT}"
+echo "Verbose LR validation                 : ${VERBOSE}"
+echo "Data source                           : ${SOURCE_FILE}"
+echo "Bam file of the child                 : ${HIFI_DIR}/${NAME_BAM_CHILD}"
+echo "Vcf file                              : ${NAME_VCF}"
+echo "Reference file                        : ${REF}"
 echo "END SUMMARY"
 echo "========================================================="
 echo ""
@@ -293,7 +293,7 @@ download_hifi_data_job() {
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --time=01:00:00
+#SBATCH --time=08:00:00
 #SBATCH --mem=4G
 #SBATCH -A r00379
 
@@ -499,13 +499,13 @@ merge_unphased-parent_phased-child_vcfs() {
     rm -f ./typescript
 
     # Make and move phased vcfs to correct directories
-    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
 
     mkdir -p ${PHASED_VCF}
     mkdir -p ${MERGED_PHASED_VCF}
 
-    # # move child vcf to correct place
+    # move child vcf to correct place
     # mv ./${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
     
     # Index samples before merging

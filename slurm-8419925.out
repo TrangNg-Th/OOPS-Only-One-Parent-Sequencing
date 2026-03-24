@@ -1,0 +1,15 @@
+conda version 25.3.0 python 3.12.10 unloaded.
+conda version 25.3.0 python 3.12.10 loaded.
+This is WhatsHap 2.8 running under Python 3.12.12
+Working on 1 sample from 1 family
+
+# Working on contig chr1 in individual NA12879
+Found 205765 usable heterozygous variants (22577 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 440215 reads covering 204568 variants
+Kept 389740 reads that cover at least two variants each
+Selected 131791 most phase-informative reads covering 204416 variants
+Best-case phasing would result in 950 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...

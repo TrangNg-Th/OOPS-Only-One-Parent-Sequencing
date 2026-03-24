@@ -1,67 +1,77 @@
-Perfect — for **public GitHub**, the README should be:
-
-* Clear in 30 seconds
-* Installable in 2 minutes
-* Runnable in 1 copy-paste block
-* Scientifically precise but not verbose
-* Architecture-light, execution-heavy
-
-Below is a **clean, public-facing README** tailored for your pipeline.
+Here’s a **clean, GitHub-ready `README.md`** that is tighter, clearer, and better aligned with your actual script (including SLURM, data sources, and full pipeline logic):
 
 ---
 
+```markdown
 # One-Parent De Novo Mutation Rate Pipeline
 
 Estimate germline **de novo mutation (DNM) rates** using:
 
-* Child **HiFi long reads** (BAM)
-* Child **Illumina short reads** (VCF)
-* One **parent Illumina short-read** dataset
+- Child **HiFi long reads** (BAM)
+- Child **Illumina short reads** (VCF)
+- One **parent Illumina VCF**
 
-Designed for scenarios where only **one parent is sequenced**.
-
----
-
-## Method Overview
-
-1. Phase child short reads using long reads (Whatshap)
-2. Merge phased child with unphased parent
-3. Detect haplotype mismatches (DNM candidates)
-4. Validate candidates with long-read support
-5. Rephase locally around candidates
-6. Estimate callable genome
-7. Compute mutation rate
-
-[
-\text{Mutation rate} = \frac{\text{Validated DNMs}}{\text{Callable genome size}}
-]
+Designed for scenarios where **only one parent is available**.
 
 ---
 
-## Installation
+## Overview
 
-### 1️⃣ Clone repository
+This pipeline performs:
 
-```bash
-git clone https://github.com/<your-username>/one-parent-dnm.git
-cd one-parent-dnm
+1. Data download (HiFi BAM, Illumina VCF, reference)
+2. VCF preprocessing
+3. Long-read–guided phasing (Whatshap)
+4. Initial DNM detection via haplotype mismatch
+5. Long-read validation of candidates
+6. Local rephasing around candidate DNMs
+7. Callable genome estimation
+8. Final mutation rate calculation
+
+---
+
+## Mutation Rate Formula
+
 ```
 
-### 2️⃣ Create environment
+Mutation rate = (# validated DNMs) / (callable genome size)
+
+````
+
+---
+
+## Requirements
+
+### Software
+
+- Python ≥ 3.10
+- `bcftools`
+- `samtools`
+- `whatshap`
+- `conda`
+- `aws-cli` (for S3 downloads)
+- SLURM (recommended)
+
+### Install environment
 
 ```bash
 conda env create -f environment.yml
-conda activate platinum-dnm
+conda activate whatshap-env
+````
+
+---
+
+## Repository Structure
+
 ```
-
-### Requirements
-
-* Python ≥ 3.10
-* bcftools
-* samtools
-* whatshap
-* SLURM (for cluster execution)
-* AWS CLI (if downloading from S3)
+.
+├── main.sh                # Main pipeline script
+├── environment.yml       # Conda environment
+├── data/
+│   └── source.txt        # Input data configuration
+├── src/                  # Python helper scripts
+└── README.md
+```
 
 ---
 
@@ -75,20 +85,20 @@ data/source.txt
 
 This file defines:
 
-* S3 locations
-* BAM / VCF filenames
-* Reference filename
+* S3 paths for BAM/VCF
+* Reference genome location
+* File names
 
-No hardcoded paths inside `main.sh`.
+⚠️ No hardcoded dataset paths inside `main.sh`.
 
 ---
 
-## Running the Pipeline
+## Usage
 
-### Run full workflow (not recommended yet)
+### Run full pipeline
 
 ```bash
-./main.sh \
+bash main.sh \
   --all \
   --prj-dir /path/to/project \
   --sample-child NA12879 \
@@ -97,24 +107,11 @@ No hardcoded paths inside `main.sh`.
 
 ---
 
-### Run specific stages
-
-| Part | Description                     |
-| ---- | ------------------------------- |
-| 0    | Print configuration             |
-| 1    | Download + preprocessing        |
-| 2    | Child phasing                   |
-| 2b   | Initial DNM detection           |
-| 3    | Local rephasing                 |
-| 3b   | Refined DNM detection           |
-| 4    | Callable genome + mutation rate |
-| 5    | Cleanup                         |
-
-Example:
+### Run specific parts
 
 ```bash
-./main.sh \
-  --part 1 2 \
+bash main.sh \
+  --part 1 2 2b \
   --prj-dir /path/to/project \
   --sample-child NA12879 \
   --sample-parent NA12878
@@ -122,41 +119,76 @@ Example:
 
 ---
 
+## Pipeline Parts
+
+| Part | Description                     |
+| ---- | ------------------------------- |
+| 0    | Print configuration             |
+| 1    | Data download + preprocessing   |
+| 2    | Child phasing (Whatshap)        |
+| 2b   | Initial DNM detection           |
+| 3    | Local rephasing                 |
+| 3b   | Refined DNM detection           |
+| 4    | Callable genome + mutation rate |
+| 5    | Cleanup                         |
+
+---
+
+## Key Parameters
+
+| Parameter          | Description                 | Default |
+| ------------------ | --------------------------- | ------- |
+| `--cpus`           | CPUs for phasing            | 8       |
+| `--time`           | SLURM walltime              | 6:00:00 |
+| `--min-rdepth`     | Min read depth              | 15      |
+| `--max-rdepth`     | Max read depth              | 50      |
+| `--gt-qual`        | Genotype quality            | 30      |
+| `--nv-quantile`    | Variant density threshold   | 0.75    |
+| `--mm-diff-min`    | Mismatch threshold          | 0.1     |
+| `--window`         | Local rephasing window (bp) | 20000   |
+| `--alt-read-count` | Min ALT-supporting reads    | 8       |
+
+---
+
 ## Output
 
-Final results are stored in:
+All outputs are written to:
 
 ```
-PRJ_DIR/<child>_phasedvcf/
+<PRJ_DIR>/<child>_phasedvcf/
 ```
 
-Key outputs:
+### Final results
 
 * `final_dnmc_<child>-from-<parent>.tsv`
 * `callable_genome.txt`
-* Mutation rate summary (printed at completion)
+* Mutation rate (printed to stdout)
 
 ---
 
-## Runtime Directory Structure
+## Pipeline Architecture
 
 ```
-PRJ_DIR/
-├── reference/
-├── hifi/
-└── illumina-dragen/
+PART 1   → Data download + preprocessing
+PART 2   → Long-read phasing
+PART 2b  → Initial DNM detection
+PART 3   → Local rephasing
+PART 3b  → Refinement
+PART 4   → Callable genome + mutation rate
+PART 5   → Cleanup
 ```
-
-Directories are created automatically if missing.
 
 ---
 
-## Scientific Assumptions
+## Notes
 
-* Accurate long-read phasing
-* Parent homozygous reference at true DNM sites
-* Identical filtering for numerator and denominator
-* Phase blocks reflect true haplotypes
+* Uses **haplotype block inconsistency** to detect DNMs
+* Long reads are used for:
+
+  * Phasing
+  * Validation
+* Parent is assumed **reference homozygous** at true DNMs
+* Numerator and denominator use consistent filtering
 
 ---
 
@@ -164,18 +196,23 @@ Directories are created automatically if missing.
 
 * Modular execution (`--part`)
 * Deterministic filtering
-* Explicit denominator calculation
-* Long-read validation stage
-* Dataset configuration isolated in `source.txt`
+* Explicit callable genome estimation
+* External data fully configurable via `source.txt`
 
 ---
 
-## Citation
 
-If using this pipeline in a publication:
-
-> Nguyen, One-Parent De Novo Mutation Rate Pipeline (GitHub)
 
 ---
 
+## Disclaimer
+
+This pipeline assumes:
+
+* High-quality long-read data
+* Reliable phasing
+* Correct reference genome
+
+
+```
 
