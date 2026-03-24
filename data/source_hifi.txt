@@ -1,0 +1,37 @@
+## Source of data studied
+## (Any double "##" line will be skipped)
+## ========================================================
+##
+##
+## =========================================================
+## Links to download the file (user editable but fixed names)
+## =========================================================
+BAM_CHILD_URL=s3://platinum-pedigree-data/data/hifi/mapped/CHM13
+VCF_PATH=s3://platinum-pedigree-data/variants/small_variants/CHM13
+##
+##
+##
+##
+## =========================================================
+## Reference used (user editable but fixed names)
+## =========================================================
+REFERENCE_PATH=https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0_maskedY_rCRS.fa.gz
+##
+##
+##
+##
+##
+##
+## =========================================================
+## File names (user editable but fixed names)
+## =========================================================
+NAME_BAM_CHILD=NA12879.CHM13.haplotagged.bam
+NAME_BAMIDX_CHILD=NA12879.CHM13.haplotagged.bam.bai
+NAME_VCF_FILE=CEPH1463.CHM13.illumina-dragen.oa.vcf.gz
+NAME_REFERENCE_FILE=chm13v2.0_maskedY_rCRS.fa
+NAME_REFERENCE=CHM13
+##
+##
+##
+##
+##

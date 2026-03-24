@@ -22,7 +22,7 @@ This pipeline performs:
 1. Data download (HiFi BAM, Illumina VCF, reference)
 2. VCF preprocessing
 3. Long-read–guided phasing (Whatshap)
-4. Initial DNM detection via haplotype mismatch
+4. Initial DNM detection
 5. Long-read validation of candidates
 6. Local rephasing around candidate DNMs
 7. Callable genome estimation
@@ -89,7 +89,7 @@ This file defines:
 * Reference genome location
 * File names
 
-⚠️ No hardcoded dataset paths inside `main.sh`.
+No hardcoded dataset paths inside `main.sh`.
 
 ---
 
@@ -201,17 +201,6 @@ PART 5   → Cleanup
 
 ---
 
-
-
----
-
-## Disclaimer
-
-This pipeline assumes:
-
-* High-quality long-read data
-* Reliable phasing
-* Correct reference genome
 
 
 ```

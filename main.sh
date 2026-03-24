@@ -188,7 +188,7 @@ fi
 ##############################################
 
 ILLUM_DIR=${PRJ_DIR}/illumina-dragen
-HIFI_DIR=${PRJ_DIR}/hifi
+BAM_DIR=${PRJ_DIR}/bam
 REF_DIR=${PRJ_DIR}/reference
 v=$((WINDW / 1000))
 
@@ -197,7 +197,7 @@ v=$((WINDW / 1000))
 # Make directory
 mkdir -p ${PRJ_DIR}
 mkdir -p ${ILLUM_DIR}
-mkdir -p ${HIFI_DIR}
+mkdir -p ${BAM_DIR}
 mkdir -p ${REF_DIR}
 
 
@@ -254,7 +254,7 @@ echo "Window size (kb)                      : ${v}"
 echo "Alt read count (LR)                   : ${ALT_READ_COUNT}"
 echo "Verbose LR validation                 : ${VERBOSE}"
 echo "Data source                           : ${SOURCE_FILE}"
-echo "Bam file of the child                 : ${HIFI_DIR}/${NAME_BAM_CHILD}"
+echo "Bam file of the child                 : ${BAM_DIR}/${NAME_BAM_CHILD}"
 echo "Vcf file                              : ${NAME_VCF}"
 echo "Reference file                        : ${REF}"
 echo "END SUMMARY"
@@ -505,8 +505,6 @@ merge_unphased-parent_phased-child_vcfs() {
     mkdir -p ${PHASED_VCF}
     mkdir -p ${MERGED_PHASED_VCF}
 
-    # move child vcf to correct place
-    # mv ./${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
     
     # Index samples before merging
     bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
