@@ -1,0 +1,27 @@
+================ Pipeline Configuration ================
+Project directory                     : /N/project/mutation_rate_Mmulatta/OnlyOneParent_ont
+Child sample                          : NA12879
+Parent sample                         : NA12877
+CPUs                                  : 8
+Walltime                              : 6:00:00
+Min read depth                        : 15
+Max read depth                        : 50
+Genotype quality cutoff               : 30
+Quantile of nbr variants per blocks   : 0.5
+Mismatch diff threshold               : 0.1
+Min base quality (LR)                 : 20
+Min mapping quality (LR)              : 20
+Window size (bp)                      : 20000
+Window size (kb)                      : 20
+Alt read count (LR)                   : 8
+Verbose LR validation                 : T
+Data source                           : /N/project/mutation_rate_Mmulatta/platinum-ped-data/OOPS-Only-One-Parent-Sequencing/data/source.txt
+Bam file of the child                 : /N/project/mutation_rate_Mmulatta/OnlyOneParent_ont/bam/NA12879.CHM13.minimap2.bam
+Vcf file                              : /N/project/mutation_rate_Mmulatta/OnlyOneParent_ont/illumina-dragen/CEPH1463.CHM13.illumina-dragen.oa.vcf.gz
+Reference file                        : /N/project/mutation_rate_Mmulatta/OnlyOneParent_ont/reference/chm13v2.0_maskedY_rCRS.fa
+END SUMMARY
+=========================================================
+
+========== PART 2: Initial phasing ==========
+Submitted batch job 8468637
+Pipeline finished.

@@ -304,19 +304,19 @@ module load samtools
 
 SAMPLE=${SAMPLE_CHILD}
 PRJ_DIR=${PRJ_DIR}
-HIFI_DIR=${HIFI_DIR}
+BAM_DIR=${BAM_DIR}
 ILLUM_DIR=${ILLUM_DIR}
 
 
-mkdir -p \${HIFI_DIR}
+mkdir -p \${BAM_DIR}
 mkdir -p \${ILLUM_DIR}
 
 
 echo "[download] Downloading HiFi BAM for \${SAMPLE}"
 
-aws s3 cp --no-sign-request ${BAM_CHILD} \${HIFI_DIR}/${NAME_BAM_CHILD}
+aws s3 cp --no-sign-request ${BAM_CHILD} \${BAM_DIR}/${NAME_BAM_CHILD}
 
-aws s3 cp --no-sign-request ${BAMIDX_CHILD} \${HIFI_DIR}/${NAME_BAMIDX_CHILD}
+aws s3 cp --no-sign-request ${BAMIDX_CHILD} \${BAM_DIR}/${NAME_BAMIDX_CHILD}
 
 mkdir -p "${REF_DIR}"
 
@@ -415,8 +415,8 @@ norm_and_compare_vcfs(){
     local ILLUM_VCF_CHILD_in=${ILLUM_DIR}/${SAMPLE_CHILD}.CHM13.illumina.unphased.noPS.vcf.gz
     local ILLUM_VCF_CHILD_out=${ILLUM_DIR}/${SAMPLE_CHILD}.CHM13.illumina.unphased.noPS.normed.vcf.gz
 
-    # local HIFI_VCF_CHILD_in=${HIFI_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.vcf.gz
-    # local HIFI_VCF_CHILD_out=${HIFI_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.normed.vcf.gz
+    # local HIFI_VCF_CHILD_in=${BAM_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.vcf.gz
+    # local HIFI_VCF_CHILD_out=${BAM_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.normed.vcf.gz
 
     local CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY"
 
@@ -463,14 +463,17 @@ REF=${REF}
 SAMPLE=${SAMPLE_CHILD}
 
 ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
-HIFI_BAM=${HIFI_DIR}/${NAME_BAM_CHILD}
+HIFI_BAM=${BAM_DIR}/${NAME_BAM_CHILD}
 OUT_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
+
+mkdir -p \${OUT_DIR}
 
 module load conda
 conda activate whatshap-env
 
 whatshap phase \
   --reference \${REF} \
+  --ignore-read-groups \
   -o \${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.phased.vcf.gz \
   \${ILLUM_VCF} \${HIFI_BAM}
 
@@ -706,7 +709,7 @@ SAMPLE=${SAMPLE_CHILD}
 v=${v}
 
 ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
-HIFI_BAM=${HIFI_DIR}/${NAME_BAM_CHILD}
+HIFI_BAM=${BAM_DIR}/${NAME_BAM_CHILD}
 
 REGIONS_BED=\${SAMPLE}_dnm_plusminus\${v}kb.bed
 LOCAL_VCF=\${SAMPLE}_dnm_plusminus\${v}kb.vcf.gz

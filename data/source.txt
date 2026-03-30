@@ -25,8 +25,8 @@ REFERENCE_PATH=https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/as
 ## =========================================================
 ## File names (user editable but fixed names)
 ## =========================================================
-NAME_BAM_CHILD=NA12879.CHM13.haplotagged.bam
-NAME_BAMIDX_CHILD=NA12879.CHM13.haplotagged.bam.bai
+NAME_BAM_CHILD=NA12879.CHM13.minimap2.bam
+NAME_BAMIDX_CHILD=NA12879.CHM13.minimap2.bam.bai
 NAME_VCF_FILE=CEPH1463.CHM13.illumina-dragen.oa.vcf.gz
 NAME_REFERENCE_FILE=chm13v2.0_maskedY_rCRS.fa
 NAME_REFERENCE=CHM13
