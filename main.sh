@@ -74,6 +74,7 @@ Optional parameters (with defaults):
   --window            Window size around DNM in bp (default: 20000)
   --alt-read-count    Minimum ALT-supporting long reads (default: 8)
   --verbose           T/F verbose long-read validation (default: T)
+  --source            Data source configuration file (Example: source.txt  Must be under: ./data/*.txt. default: ./data/source.txt)
 
 ------------------------------------------------------------------
 Examples:
@@ -93,7 +94,8 @@ Run only callable genome + final summary:
     --prj-dir /path/to/project \
     --reference /path/tp/project/chm13v2.0_maskedY_rCRS.fa \
     --sample-child NA12879 \
-    --sample-parent NA12878
+    --sample-parent NA12878 \
+    --source custom_source.txt
 
 Run data prep + phasing only:
   ./pipeline.sh \
@@ -201,17 +203,31 @@ mkdir -p ${BAM_DIR}
 mkdir -p ${REF_DIR}
 
 
+
+
 ##############################################
 # Load data source configuration
 ##############################################
 # source.txt lives in data/ same level as this script main.sh
 WORKING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_FILE="${WORKING_DIR}/data/source.txt"
 DEPENDENCIES_FILE="${WORKING_DIR}/environment.yml"
+
+
+##############################################
+# Check if the argument --source is given, if not, use default source file
+##############################################
+if [[ -n "${SOURCE:-}" ]]; then
+    SOURCE_FILE="${WORKING_DIR}/data/${SOURCE}"
+else
+    SOURCE_FILE="${WORKING_DIR}/data/source.txt"
+fi
+
+
+
 
 ## Read the source file
 if [[ ! -f "${SOURCE_FILE}" ]]; then
-    echo "ERROR: source.txt not found at ${SOURCE_FILE}"
+    echo "ERROR: ${SOURCE} not found at ${SOURCE_FILE}"
     exit 1
 fi
 
