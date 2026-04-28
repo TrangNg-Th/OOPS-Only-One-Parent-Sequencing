@@ -1,0 +1,349 @@
+conda version 25.3.0 python 3.12.10 unloaded.
+conda version 25.3.0 python 3.12.10 loaded.
+This is WhatsHap 2.8 running under Python 3.12.12
+Working on 1 sample from 1 family
+
+# Working on contig chr1 in individual NA12879
+Found 205765 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 61158 reads covering 200121 variants
+Kept 54133 reads that cover at least two variants each
+Selected 54034 most phase-informative reads covering 199661 variants
+Best-case phasing would result in 2266 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 1633 variants (0.8% of accessible variants) between position 245342121 and 245987578
+
+# Working on contig chr2 in individual NA12879
+Found 208363 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 69947 reads covering 205093 variants
+Kept 61565 reads that cover at least two variants each
+Selected 61468 most phase-informative reads covering 204619 variants
+Best-case phasing would result in 2013 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2019 variants (1.0% of accessible variants) between position 153079311 and 154632314
+
+# Working on contig chr3 in individual NA12879
+Found 187523 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 60300 reads covering 185182 variants
+Kept 54014 reads that cover at least two variants each
+Selected 53881 most phase-informative reads covering 184851 variants
+Best-case phasing would result in 1509 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 3755 variants (2.0% of accessible variants) between position 165602582 and 167347726
+
+# Working on contig chr4 in individual NA12879
+Found 189539 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 61342 reads covering 187847 variants
+Kept 54223 reads that cover at least two variants each
+Selected 54032 most phase-informative reads covering 187517 variants
+Best-case phasing would result in 1372 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2604 variants (1.4% of accessible variants) between position 30357984 and 32171365
+
+# Working on contig chr5 in individual NA12879
+Found 163726 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 53532 reads covering 161563 variants
+Kept 47217 reads that cover at least two variants each
+Selected 47107 most phase-informative reads covering 161218 variants
+Best-case phasing would result in 1398 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2388 variants (1.5% of accessible variants) between position 60295114 and 62495766
+
+# Working on contig chr6 in individual NA12879
+Found 173832 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 51219 reads covering 171637 variants
+Kept 45489 reads that cover at least two variants each
+Selected 45381 most phase-informative reads covering 171301 variants
+Best-case phasing would result in 1384 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 4245 variants (2.5% of accessible variants) between position 32335949 and 32495347
+
+# Working on contig chr7 in individual NA12879
+Found 158337 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 45186 reads covering 154037 variants
+Kept 40195 reads that cover at least two variants each
+Selected 40102 most phase-informative reads covering 153776 variants
+Best-case phasing would result in 1425 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2367 variants (1.5% of accessible variants) between position 85150388 and 86668744
+
+# Working on contig chr8 in individual NA12879
+Found 135817 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 41769 reads covering 133406 variants
+Kept 35925 reads that cover at least two variants each
+Selected 35856 most phase-informative reads covering 133097 variants
+Best-case phasing would result in 1273 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2867 variants (2.2% of accessible variants) between position 13534818 and 14641837
+
+# Working on contig chr9 in individual NA12879
+Found 123526 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 33930 reads covering 117757 variants
+Kept 30624 reads that cover at least two variants each
+Selected 30570 most phase-informative reads covering 117572 variants
+Best-case phasing would result in 1163 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2300 variants (2.0% of accessible variants) between position 9834978 and 11276033
+
+# Working on contig chr10 in individual NA12879
+Found 133487 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 36357 reads covering 131204 variants
+Kept 32388 reads that cover at least two variants each
+Selected 32357 most phase-informative reads covering 130940 variants
+Best-case phasing would result in 1218 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2309 variants (1.8% of accessible variants) between position 81469820 and 83239600
+
+# Working on contig chr11 in individual NA12879
+Found 130367 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 36405 reads covering 127829 variants
+Kept 32083 reads that cover at least two variants each
+Selected 32038 most phase-informative reads covering 127554 variants
+Best-case phasing would result in 1214 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 5932 variants (4.7% of accessible variants) between position 55142959 and 57069587
+
+# Working on contig chr12 in individual NA12879
+Found 126086 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 37036 reads covering 123853 variants
+Kept 32598 reads that cover at least two variants each
+Selected 32538 most phase-informative reads covering 123559 variants
+Best-case phasing would result in 1199 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2602 variants (2.1% of accessible variants) between position 82872894 and 84349893
+
+# Working on contig chr13 in individual NA12879
+Found 102069 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 32453 reads covering 100407 variants
+Kept 29253 reads that cover at least two variants each
+Selected 29153 most phase-informative reads covering 100245 variants
+Best-case phasing would result in 708 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2918 variants (2.9% of accessible variants) between position 53603127 and 55149469
+
+# Working on contig chr14 in individual NA12879
+Found 103313 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 26488 reads covering 99078 variants
+Kept 23482 reads that cover at least two variants each
+Selected 23366 most phase-informative reads covering 98878 variants
+Best-case phasing would result in 916 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 4991 variants (5.0% of accessible variants) between position 4207661 and 4678148
+
+# Working on contig chr15 in individual NA12879
+Found 84504 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 22443 reads covering 82261 variants
+Kept 19808 reads that cover at least two variants each
+Selected 19776 most phase-informative reads covering 82044 variants
+Best-case phasing would result in 890 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2050 variants (2.5% of accessible variants) between position 15707519 and 15861322
+
+# Working on contig chr16 in individual NA12879
+Found 81603 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 17500 reads covering 77845 variants
+Kept 15368 reads that cover at least two variants each
+Selected 15349 most phase-informative reads covering 77637 variants
+Best-case phasing would result in 959 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 1254 variants (1.6% of accessible variants) between position 68513431 and 69390933
+
+# Working on contig chr17 in individual NA12879
+Found 80276 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 17360 reads covering 76375 variants
+Kept 15657 reads that cover at least two variants each
+Selected 15638 most phase-informative reads covering 76223 variants
+Best-case phasing would result in 1025 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2231 variants (2.9% of accessible variants) between position 54312588 and 56091930
+
+# Working on contig chr18 in individual NA12879
+Found 74739 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 23185 reads covering 73759 variants
+Kept 20554 reads that cover at least two variants each
+Selected 20506 most phase-informative reads covering 73625 variants
+Best-case phasing would result in 671 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2343 variants (3.2% of accessible variants) between position 67575752 and 69194104
+
+# Working on contig chr19 in individual NA12879
+Found 64102 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 10362 reads covering 58846 variants
+Kept 9245 reads that cover at least two variants each
+Selected 9240 most phase-informative reads covering 58693 variants
+Best-case phasing would result in 913 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 1576 variants (2.7% of accessible variants) between position 45574836 and 46221480
+
+# Working on contig chr20 in individual NA12879
+Found 60076 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 15366 reads covering 57872 variants
+Kept 13628 reads that cover at least two variants each
+Selected 13606 most phase-informative reads covering 57736 variants
+Best-case phasing would result in 706 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 1214 variants (2.1% of accessible variants) between position 16220648 and 17103041
+
+# Working on contig chr21 in individual NA12879
+Found 45845 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 11373 reads covering 44292 variants
+Kept 10221 reads that cover at least two variants each
+Selected 10115 most phase-informative reads covering 44235 variants
+Best-case phasing would result in 419 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2095 variants (4.7% of accessible variants) between position 6277851 and 6802169
+
+# Working on contig chr22 in individual NA12879
+Found 53752 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 8200 reads covering 49271 variants
+Kept 7537 reads that cover at least two variants each
+Selected 7496 most phase-informative reads covering 49182 variants
+Best-case phasing would result in 569 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 1726 variants (3.5% of accessible variants) between position 16380105 and 16856236
+
+# Working on contig chrX in individual NA12879
+Found 87234 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 42224 reads covering 85296 variants
+Kept 34297 reads that cover at least two variants each
+Selected 34240 most phase-informative reads covering 84807 variants
+Best-case phasing would result in 1546 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 2062 variants (2.4% of accessible variants) between position 73863882 and 75380727
+
+# Working on contig chrY in individual NA12879
+Found 97 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 0 reads covering 0 variants
+Kept 0 reads that cover at least two variants each
+Selected 0 most phase-informative reads covering 0 variants
+Best-case phasing would result in 0 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+No. of phased blocks: 0
+WARNING: Skipping duplicated position 5317 on chromosome 'chrM' Hiding further warnings of this type, use --debug to show
+
+# Working on contig chrM in individual NA12879
+Found 39 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 97 reads covering 29 variants
+Kept 97 reads that cover at least two variants each
+Selected 15 most phase-informative reads covering 29 variants
+Best-case phasing would result in 1 non-singleton phased block (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 29 variants (100.0% of accessible variants) between position 4279 and 16496
+
+# Resource usage
+Maximum memory usage: 1.568 GB
+Time spent reading BAM/CRAM:                  386.7 s
+Time spent parsing VCF:                       117.6 s
+Time spent selecting reads:                   171.3 s
+Time spent phasing:                           201.1 s
+Time spent writing VCF:                       202.0 s
+Time spent finding components:                 19.3 s
+Time spent on rest:                           529.5 s
+Total elapsed time:                          1627.5 s
+Found 1 sample(s) in input VCF
+Reporting results for sample NA12879
+WARNING: Skipping duplicated position 5317 on chromosome 'chrM' Hiding further warnings of this type, use --debug to show
+Found 1 sample(s) in input VCF
+Found 1 sample(s) in BAM file
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 59242 reads covering 198613 variants
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 67626 reads covering 203832 variants
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 58659 reads covering 184219 variants
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 59541 reads covering 186874 variants
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 51757 reads covering 160652 variants
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 49589 reads covering 170556 variants
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 43931 reads covering 153072 variants

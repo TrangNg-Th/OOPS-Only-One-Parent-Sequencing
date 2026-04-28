@@ -34,7 +34,7 @@ SAMPLE=NA12879
 INPUT_BAM=${SAMPLE}.CHM13.haplotagged.bam
 
 # Percentages to retain
-SAMPLE_FRACTIONS=(50 25 5)
+SAMPLE_FRACTIONS=(5)  # 5 = 5%
 
 echo "[$(date)] Starting downsampling for ${INPUT_BAM}"
 

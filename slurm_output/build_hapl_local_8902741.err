@@ -1,0 +1,54 @@
+conda version 25.3.0 python 3.12.10 unloaded.
+conda version 25.3.0 python 3.12.10 loaded.
+This is WhatsHap 2.8 running under Python 3.12.12
+WARNING: Read group "1 SM:NA12879 PL:ONT" does not contain an SM field to assign it to a sample. Use --ignore-read-groups to use these alignments anyway.
+Working on 1 sample from 1 family
+
+# Working on contig chr1 in individual NA12879
+Found 50 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 36 reads covering 50 variants
+Kept 34 reads that cover at least two variants each
+Selected 18 most phase-informative reads covering 50 variants
+Best-case phasing would result in 1 non-singleton phased block (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 50 variants (100.0% of accessible variants) between position 225396334 and 225435751
+
+# Working on contig chr17 in individual NA12879
+Found 71 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 24 reads covering 71 variants
+Kept 22 reads that cover at least two variants each
+Selected 21 most phase-informative reads covering 71 variants
+Best-case phasing would result in 1 non-singleton phased block (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 71 variants (100.0% of accessible variants) between position 13551128 and 13588268
+
+# Working on contig chr3 in individual NA12879
+Found 43 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 25 reads covering 43 variants
+Kept 24 reads that cover at least two variants each
+Selected 23 most phase-informative reads covering 43 variants
+Best-case phasing would result in 1 non-singleton phased block (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 43 variants (100.0% of accessible variants) between position 141749357 and 141787303
+
+# Resource usage
+Maximum memory usage: 0.571 GB
+Time spent reading BAM/CRAM:                   91.3 s
+Time spent parsing VCF:                         0.0 s
+Time spent selecting reads:                     0.0 s
+Time spent phasing:                             0.3 s
+Time spent writing VCF:                         0.0 s
+Time spent finding components:                  0.0 s
+Time spent on rest:                             0.4 s
+Total elapsed time:                            92.0 s
+Found 1 sample(s) in input VCF
+Reporting results for sample NA12879

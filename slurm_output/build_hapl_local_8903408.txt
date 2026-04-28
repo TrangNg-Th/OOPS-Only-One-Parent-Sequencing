@@ -1,0 +1,458 @@
+[local phase] Input VCF          : /N/project/mutation_rate_Mmulatta/Oops_outputs/Oops_hifi0.14_79_77/illumina-dragen/NA12879.CHM13.illumina.unphased.noPS.vcf.gz
+[local phase] Clean BAM          : /N/project/mutation_rate_Mmulatta/Oops_outputs/Oops_hifi0.14_79_77/bam/NA12879.CHM13.haplotagged.downsampled_14pc_clean.bam
+[local phase] Regions BED        : NA12879_dnmc_plusminus20kb.bed
+[local phase] Local VCF          : NA12879_dnmc_plusminus20kb.vcf.gz
+[local phase] Local diploid VCF  : NA12879_dnmc_plusminus20kb.diploid.vcf.gz
+[local phase] Local phased VCF   : NA12879.illumVCF_hifiOnly.phased.20kb.vcf.gz
+[local phase] Removing stale local outputs
+[local phase] Subsetting Illumina VCF to local regions
+[local phase] Indexing local VCF
+[local phase] Number of records in local VCF: 5231
+[local phase] Building diploid-only local VCF to avoid mixed-ploidy crashes
+[local phase] Indexing diploid-only local VCF
+[local phase] Number of diploid local records retained: 5120
+[local phase] Optional sanity check: count records whose GT is not diploid-style
+[local phase] Non-diploid-style GT records remaining: 0
+[local phase] Running whatshap on diploid-only local VCF
+[local phase] Checking phased local VCF is readable
+[local phase] Rebuilding phased local VCF index
+--ignore-read-groups
+Phasing statistics for sample NA12879 from file NA12879.illumVCF_hifiOnly.phased.20kb.vcf.gz
+---------------- Chromosome chr1 ----------------
+      Variants in VCF:      881
+         Heterozygous:       45    (      33    SNVs)
+               Phased:       43    (      32    SNVs)
+  Heterozygous phased:       95.6% (      97.0% SNVs)
+             Unphased:        2    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        9
+
+Block sizes (no. of variants)
+         Sum of sizes:       43    variants
+    Median block size:        4.00 variants
+   Average block size:        4.78 variants
+        Largest block:        8    variants
+       Smallest block:        2    variants
+
+Block lengths (basepairs)
+       Sum of lengths:   174073    bp
+  Median block length:    19994.00 bp
+ Average block length:    19341.44 bp
+        Longest block:    35469    bp
+       Shortest block:       61    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr10 ----------------
+      Variants in VCF:      382
+         Heterozygous:      134    (     105    SNVs)
+               Phased:      134    (     105    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        3
+
+Block sizes (no. of variants)
+         Sum of sizes:      134    variants
+    Median block size:       55.00 variants
+   Average block size:       44.67 variants
+        Largest block:       76    variants
+       Smallest block:        3    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    88569    bp
+  Median block length:    28822.00 bp
+ Average block length:    29523.00 bp
+        Longest block:    39579    bp
+       Shortest block:    20168    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr11 ----------------
+      Variants in VCF:      287
+         Heterozygous:      129    (     108    SNVs)
+               Phased:      128    (     108    SNVs)
+  Heterozygous phased:       99.2% (     100.0% SNVs)
+             Unphased:        1    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        4
+
+Block sizes (no. of variants)
+         Sum of sizes:      128    variants
+    Median block size:       20.50 variants
+   Average block size:       32.00 variants
+        Largest block:       85    variants
+       Smallest block:        2    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    90986    bp
+  Median block length:    25589.50 bp
+ Average block length:    22746.50 bp
+        Longest block:    39799    bp
+       Shortest block:        8    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr12 ----------------
+      Variants in VCF:      269
+         Heterozygous:      125    (     100    SNVs)
+               Phased:      123    (     100    SNVs)
+  Heterozygous phased:       98.4% (     100.0% SNVs)
+             Unphased:        2    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        3
+
+Block sizes (no. of variants)
+         Sum of sizes:      123    variants
+    Median block size:       42.00 variants
+   Average block size:       41.00 variants
+        Largest block:       45    variants
+       Smallest block:       36    variants
+
+Block lengths (basepairs)
+       Sum of lengths:   104905    bp
+  Median block length:    37739.00 bp
+ Average block length:    34968.33 bp
+        Longest block:    38796    bp
+       Shortest block:    28370    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr13 ----------------
+      Variants in VCF:      226
+         Heterozygous:       76    (      61    SNVs)
+               Phased:       75    (      60    SNVs)
+  Heterozygous phased:       98.7% (      98.4% SNVs)
+             Unphased:        1    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        4
+
+Block sizes (no. of variants)
+         Sum of sizes:       75    variants
+    Median block size:       12.00 variants
+   Average block size:       18.75 variants
+        Largest block:       41    variants
+       Smallest block:       10    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    99983    bp
+  Median block length:    23895.50 bp
+ Average block length:    24995.75 bp
+        Longest block:    38113    bp
+       Shortest block:    14079    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr14 ----------------
+      Variants in VCF:      447
+         Heterozygous:       90    (      79    SNVs)
+               Phased:       89    (      79    SNVs)
+  Heterozygous phased:       98.9% (     100.0% SNVs)
+             Unphased:        1    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        3
+
+Block sizes (no. of variants)
+         Sum of sizes:       89    variants
+    Median block size:        8.00 variants
+   Average block size:       29.67 variants
+        Largest block:       74    variants
+       Smallest block:        7    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    88229    bp
+  Median block length:    30393.00 bp
+ Average block length:    29409.67 bp
+        Longest block:    37265    bp
+       Shortest block:    20571    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr15 ----------------
+      Variants in VCF:      277
+         Heterozygous:       54    (      49    SNVs)
+               Phased:       54    (      49    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        2
+
+Block sizes (no. of variants)
+         Sum of sizes:       54    variants
+    Median block size:       27.00 variants
+   Average block size:       27.00 variants
+        Largest block:       43    variants
+       Smallest block:       11    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    65263    bp
+  Median block length:    32631.50 bp
+ Average block length:    32631.50 bp
+        Longest block:    37417    bp
+       Shortest block:    27846    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr16 ----------------
+      Variants in VCF:       48
+         Heterozygous:        4    (       4    SNVs)
+               Phased:        4    (       4    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        1
+
+Block sizes (no. of variants)
+         Sum of sizes:        4    variants
+    Median block size:        4.00 variants
+   Average block size:        4.00 variants
+        Largest block:        4    variants
+       Smallest block:        4    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    12664    bp
+  Median block length:    12664.00 bp
+ Average block length:    12664.00 bp
+        Longest block:    12664    bp
+       Shortest block:    12664    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr17 ----------------
+      Variants in VCF:      226
+         Heterozygous:       71    (      59    SNVs)
+               Phased:       71    (      59    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        1
+
+Block sizes (no. of variants)
+         Sum of sizes:       71    variants
+    Median block size:       71.00 variants
+   Average block size:       71.00 variants
+        Largest block:       71    variants
+       Smallest block:       71    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    37140    bp
+  Median block length:    37140.00 bp
+ Average block length:    37140.00 bp
+        Longest block:    37140    bp
+       Shortest block:    37140    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr18 ----------------
+      Variants in VCF:      109
+         Heterozygous:        3    (       3    SNVs)
+               Phased:        3    (       3    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        1
+
+Block sizes (no. of variants)
+         Sum of sizes:        3    variants
+    Median block size:        3.00 variants
+   Average block size:        3.00 variants
+        Largest block:        3    variants
+       Smallest block:        3    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    25874    bp
+  Median block length:    25874.00 bp
+ Average block length:    25874.00 bp
+        Longest block:    25874    bp
+       Shortest block:    25874    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr2 ----------------
+      Variants in VCF:      253
+         Heterozygous:       61    (      53    SNVs)
+               Phased:       61    (      53    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        3
+
+Block sizes (no. of variants)
+         Sum of sizes:       61    variants
+    Median block size:       11.00 variants
+   Average block size:       20.33 variants
+        Largest block:       45    variants
+       Smallest block:        5    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    92546    bp
+  Median block length:    35309.00 bp
+ Average block length:    30848.67 bp
+        Longest block:    38227    bp
+       Shortest block:    19010    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr21 ----------------
+      Variants in VCF:       20
+         Heterozygous:        8    (       7    SNVs)
+               Phased:        8    (       7    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        1
+
+Block sizes (no. of variants)
+         Sum of sizes:        8    variants
+    Median block size:        8.00 variants
+   Average block size:        8.00 variants
+        Largest block:        8    variants
+       Smallest block:        8    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    29415    bp
+  Median block length:    29415.00 bp
+ Average block length:    29415.00 bp
+        Longest block:    29415    bp
+       Shortest block:    29415    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr22 ----------------
+      Variants in VCF:      123
+         Heterozygous:       10    (       5    SNVs)
+               Phased:        9    (       5    SNVs)
+  Heterozygous phased:       90.0% (     100.0% SNVs)
+             Unphased:        1    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        1
+
+Block sizes (no. of variants)
+         Sum of sizes:        9    variants
+    Median block size:        9.00 variants
+   Average block size:        9.00 variants
+        Largest block:        9    variants
+       Smallest block:        9    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    31051    bp
+  Median block length:    31051.00 bp
+ Average block length:    31051.00 bp
+        Longest block:    31051    bp
+       Shortest block:    31051    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr3 ----------------
+      Variants in VCF:      305
+         Heterozygous:       50    (      40    SNVs)
+               Phased:       50    (      40    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        3
+
+Block sizes (no. of variants)
+         Sum of sizes:       50    variants
+    Median block size:        4.00 variants
+   Average block size:       16.67 variants
+        Largest block:       43    variants
+       Smallest block:        3    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    70391    bp
+  Median block length:    18170.00 bp
+ Average block length:    23463.67 bp
+        Longest block:    37946    bp
+       Shortest block:    14275    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr4 ----------------
+      Variants in VCF:      449
+         Heterozygous:      192    (     170    SNVs)
+               Phased:      187    (     165    SNVs)
+  Heterozygous phased:       97.4% (      97.1% SNVs)
+             Unphased:        5    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        5
+
+Block sizes (no. of variants)
+         Sum of sizes:      187    variants
+    Median block size:       23.00 variants
+   Average block size:       37.40 variants
+        Largest block:      111    variants
+       Smallest block:        5    variants
+
+Block lengths (basepairs)
+       Sum of lengths:   114234    bp
+  Median block length:    21951.00 bp
+ Average block length:    22846.80 bp
+        Longest block:    37535    bp
+       Shortest block:      968    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr5 ----------------
+      Variants in VCF:      102
+         Heterozygous:       90    (      74    SNVs)
+               Phased:       90    (      74    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        1
+
+Block sizes (no. of variants)
+         Sum of sizes:       90    variants
+    Median block size:       90.00 variants
+   Average block size:       90.00 variants
+        Largest block:       90    variants
+       Smallest block:       90    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    38850    bp
+  Median block length:    38850.00 bp
+ Average block length:    38850.00 bp
+        Longest block:    38850    bp
+       Shortest block:    38850    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr7 ----------------
+      Variants in VCF:      251
+         Heterozygous:      101    (      84    SNVs)
+               Phased:      101    (      84    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        2
+
+Block sizes (no. of variants)
+         Sum of sizes:      101    variants
+    Median block size:       50.50 variants
+   Average block size:       50.50 variants
+        Largest block:       72    variants
+       Smallest block:       29    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    57642    bp
+  Median block length:    28821.00 bp
+ Average block length:    28821.00 bp
+        Longest block:    37361    bp
+       Shortest block:    20281    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr8 ----------------
+      Variants in VCF:      206
+         Heterozygous:       26    (      21    SNVs)
+               Phased:       26    (      21    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        4
+
+Block sizes (no. of variants)
+         Sum of sizes:       26    variants
+    Median block size:        5.50 variants
+   Average block size:        6.50 variants
+        Largest block:       13    variants
+       Smallest block:        2    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    73986    bp
+  Median block length:    20340.50 bp
+ Average block length:    18496.50 bp
+        Longest block:    31303    bp
+       Shortest block:     2002    bp
+           Block NG50:        0    bp
+---------------- ALL chromosomes (aggregated) ----------------
+      Variants in VCF:     4861
+         Heterozygous:     1269    (    1055    SNVs)
+               Phased:     1256    (    1048    SNVs)
+  Heterozygous phased:       99.0% (      99.3% SNVs)
+             Unphased:       13    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:       51
+
+Block sizes (no. of variants)
+         Sum of sizes:     1256    variants
+    Median block size:        9.00 variants
+   Average block size:       24.63 variants
+        Largest block:      111    variants
+       Smallest block:        2    variants
+
+Block lengths (basepairs)
+       Sum of lengths:  1295801    bp
+  Median block length:    28822.00 bp
+ Average block length:    25407.86 bp
+        Longest block:    39799    bp
+       Shortest block:        8    bp
+           Block NG50:        0    bp
+[local phase] Done

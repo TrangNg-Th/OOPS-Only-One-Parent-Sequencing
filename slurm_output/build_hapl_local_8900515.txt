@@ -1,0 +1,90 @@
+[local phase] Input VCF          : /N/project/mutation_rate_Mmulatta/Oops_outputs/Oops_hifi0.14_79_77/illumina-dragen/NA12879.CHM13.illumina.unphased.noPS.vcf.gz
+[local phase] Clean BAM          : /N/project/mutation_rate_Mmulatta/Oops_outputs/Oops_hifi0.14_79_77/bam/NA12879.CHM13.haplotagged.downsampled_14pc_clean.bam
+[local phase] Regions BED        : NA12879_dnmc_plusminus20kb.bed
+[local phase] Local VCF          : NA12879_dnmc_plusminus20kb.vcf.gz
+[local phase] Local diploid VCF  : NA12879_dnmc_plusminus20kb.diploid.vcf.gz
+[local phase] Local phased VCF   : NA12879.illumVCF_hifiOnly.phased.20kb.vcf.gz
+[local phase] Removing stale local outputs
+[local phase] Subsetting Illumina VCF to local regions
+[local phase] Indexing local VCF
+[local phase] Number of records in local VCF: 329
+[local phase] Building diploid-only local VCF to avoid mixed-ploidy crashes
+[local phase] Indexing diploid-only local VCF
+[local phase] Number of diploid local records retained: 329
+[local phase] Optional sanity check: count records whose GT is not diploid-style
+[local phase] Non-diploid-style GT records remaining: 0
+[local phase] Running whatshap on diploid-only local VCF
+[local phase] Checking phased local VCF is readable
+[local phase] Rebuilding phased local VCF index
+--ignore-read-groups
+Phasing statistics for sample NA12879 from file NA12879.illumVCF_hifiOnly.phased.20kb.vcf.gz
+---------------- Chromosome chr1 ----------------
+      Variants in VCF:       84
+         Heterozygous:       50    (      38    SNVs)
+               Phased:       50    (      38    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        2
+
+Block sizes (no. of variants)
+         Sum of sizes:       50    variants
+    Median block size:       25.00 variants
+   Average block size:       25.00 variants
+        Largest block:       26    variants
+       Smallest block:       24    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    35735    bp
+  Median block length:    17867.50 bp
+ Average block length:    17867.50 bp
+        Longest block:    19672    bp
+       Shortest block:    16063    bp
+           Block NG50:        0    bp
+---------------- Chromosome chr17 ----------------
+      Variants in VCF:      226
+         Heterozygous:       71    (      59    SNVs)
+               Phased:       71    (      59    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        1
+
+Block sizes (no. of variants)
+         Sum of sizes:       71    variants
+    Median block size:       71.00 variants
+   Average block size:       71.00 variants
+        Largest block:       71    variants
+       Smallest block:       71    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    37140    bp
+  Median block length:    37140.00 bp
+ Average block length:    37140.00 bp
+        Longest block:    37140    bp
+       Shortest block:    37140    bp
+           Block NG50:        0    bp
+---------------- ALL chromosomes (aggregated) ----------------
+      Variants in VCF:      310
+         Heterozygous:      121    (      97    SNVs)
+               Phased:      121    (      97    SNVs)
+  Heterozygous phased:      100.0% (     100.0% SNVs)
+             Unphased:        0    (not considered below)
+           Singletons:        0    (not considered below)
+               Blocks:        3
+
+Block sizes (no. of variants)
+         Sum of sizes:      121    variants
+    Median block size:       26.00 variants
+   Average block size:       40.33 variants
+        Largest block:       71    variants
+       Smallest block:       24    variants
+
+Block lengths (basepairs)
+       Sum of lengths:    72875    bp
+  Median block length:    19672.00 bp
+ Average block length:    24291.67 bp
+        Longest block:    37140    bp
+       Shortest block:    16063    bp
+           Block NG50:        0    bp
+[local phase] Done

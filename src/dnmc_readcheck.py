@@ -1,79 +1,60 @@
 import os
 import sys
-import pysam  ## included in whatshap-env
+import pysam
 from collections import Counter, defaultdict
 
-
-# set working directory
-
-
-## ====================================================
-## older scripts
-## =======================================================
 os.chdir(os.getcwd())
-# child_bam = "../../hifi/NA12879.CHM13.haplotagged.bam"
-# input_dnmc_bed = "../small_variants/NA12879_phasedvcf/mismatch_analysis/NA12878_NA12879_dnmc.bed"
 
-# min_base_qual = 20
-# min_mapping_qual = 20
-## =====================================================
-if len(sys.argv) != 9:
+# ============================================================
+# Argument parsing
+# ============================================================
+if len(sys.argv) != 10:
     print(
-        "Usage: python dnmc_readcheck.py ",
-        "<child_bam> <input_dnmc_bed> <min_base_qual> <min_mapping_qual> "
+        "Usage: python dnmc_readcheck.py "
+        "<child_id> <child_bam> <input_bed> "
+        "<min_base_qual> <min_mapping_qual> "
+        "<window> <alt_read_count> <verbose> <label>"
     )
-    
-    print()
-    print("Arguments:")
-    print("  child_id           Input ID of the child")
-    print("  child_bam          Input long reads bam file for the child")
-    print("  input_dnmc_bed     Input DNM candidate positions")
-    print("  min_base_qual      Input minimum base quality threshold (ex. 20)")
-    print("  min_mapping_qual   Input minimum mapping quality threshold (ex. 20)")
-    print("  window             Window to create BED file of pos +/- window (ex. 10000)")
-    print("  alt_read_count     Number of reads of a HP supporting the alternative allele")
-    print("  verbose (T or F)   If T, print out all the alleles counted")
-    
-    
+    sys.exit(1)
 
-
-## =============================================================
-## Parse arguments
-## =============================================================
 child_id = sys.argv[1]
 child_bam = sys.argv[2]
-input_dnmc_bed = sys.argv[3]
+input_bed = sys.argv[3]
 min_base_qual = int(sys.argv[4])
 min_mapping_qual = int(sys.argv[5])
 window = int(sys.argv[6])
 alt_read_count = int(sys.argv[7])
-verbose=sys.argv[8]
+verbose = sys.argv[8].upper() == "T"
+label = sys.argv[9].lower()
 
-if verbose == "T":
-    verbose = True
-else:
-    verbose = False
+if label == "dnmc":
+    print("Processing DNM candidates...")
+elif label == "hetc":
+    print("Processing heterozygous candidates...")
 
-## ===========================================================
-
-
-# Read DNM candidate BED
-dnmc_sites = []
-with open(input_dnmc_bed) as f:
+# ============================================================
+# Load candidate positions
+# ============================================================
+sites = []
+with open(input_bed) as f:
     for line in f:
         chrom, start, end = line.rstrip().split("\t")[:3]
-        dnmc_sites.append((chrom, int(start), int(end)))
+        sites.append((chrom, int(start), int(end)))
 
 bam = pysam.AlignmentFile(child_bam, "rb")
 
-final_dnmc_result = {}
+final_results = {}
 
-for chrom, start, end in dnmc_sites:
-    pos = end  # 1-based
-    
+# ============================================================
+# Main loop: evaluate each site
+# ============================================================
+for chrom, start, end in sites:
+    pos = end  # 1-based coordinate
 
-    # allele -> Counter(HP -> read_count)
+    # allele -> Counter(haplotype -> read count)
     allele_hp = defaultdict(Counter)
+    allele_hp_reads = defaultdict(lambda: defaultdict(list))  # allele -> hp -> list of read names
+    
 
     for col in bam.pileup(
         chrom,
@@ -98,84 +79,138 @@ for chrom, start, end in dnmc_sites:
 
             hp = read.get_tag("HP") if read.has_tag("HP") else None
             allele_hp[base][hp] += 1
-            
-    if verbose: 
-        print(f"Processing chrom {chrom} @ {end}")
-        for k, v in allele_hp.items():
-            print(f"{k} --> {v}")
-            print()
-        print("=====================================")
-    
-    # ---- strict phasing criterion ----
+            allele_hp_reads[base][hp].append(read.query_name)
+
+    if verbose:
+        print(f"Processing {chrom}:{pos}")
+        for allele, hp_counts in allele_hp.items():
+            print(f"{allele} -> {hp_counts}")
+        print("=" * 40)
+
+    # ========================================================
+    # Filtering logic (biological constraints)
+    # ========================================================
+
+    # Must have exactly 2 alleles
     if len(allele_hp) != 2:
         continue
 
-    # each allele must be on exactly one haplotype
+    # Each allele must map to exactly one haplotype
     if not all(len(hp_counts) == 1 for hp_counts in allele_hp.values()):
         continue
 
-    # alleles must be on different haplotypes
+    # Alleles must be on different haplotypes
     haplotypes = [next(iter(hp_counts)) for hp_counts in allele_hp.values()]
     if len(set(haplotypes)) != 2:
         continue
 
-    # KEEP: store full read-count info
-     # ---- determine REF / ALT by read count ----
+    # ========================================================
+    # Compute allele counts
+    # ========================================================
     allele_totals = {
         allele: sum(hp_counts.values())
         for allele, hp_counts in allele_hp.items()
     }
 
-    # ALT = allele with fewer reads
-    alt_allele = min(allele_totals, key=allele_totals.get)
-    ref_allele = max(allele_totals, key=allele_totals.get)
-
-    alt_count = allele_totals[alt_allele]
-
-    # ---- ALT read count filter ----
-    if alt_count <= alt_read_count:  # at least n read per alternative allele in the long read
+    alleles = list(allele_totals.keys())
+    if len(alleles) != 2:
         continue
 
-    # KEEP: store tagged result
-    final_dnmc_result[(chrom, pos)] = {
+    a1, a2 = alleles
+    c1, c2 = allele_totals[a1], allele_totals[a2]
+
+    # Reject ambiguous tie cases
+    if c1 == c2:
+        continue
+
+    # Assign REF = more supported allele, ALT = less supported
+    if c1 > c2:
+        ref_allele, alt_allele = a1, a2
+        ref_count, alt_count = c1, c2
+    else:
+        ref_allele, alt_allele = a2, a1
+        ref_count, alt_count = c2, c1
+
+    # Require minimum support for ALT allele
+    if alt_count < alt_read_count:
+        continue
+
+    # ========================================================
+    # Store result
+    # ========================================================
+    ref_hp = next(iter(allele_hp[ref_allele]))
+    alt_hp = next(iter(allele_hp[alt_allele]))
+    
+    
+    final_results[(chrom, pos)] = {
         "REF": {
             "allele": ref_allele,
             "hp": next(iter(allele_hp[ref_allele])),
-            "count": allele_totals[ref_allele],
+            "count": ref_count,
+            "read_ids": allele_hp_reads[ref_allele][ref_hp],
         },
         "ALT": {
             "allele": alt_allele,
             "hp": next(iter(allele_hp[alt_allele])),
             "count": alt_count,
+            "read_ids": allele_hp_reads[alt_allele][alt_hp],
         },
     }
 
 bam.close()
 
+# ============================================================
+# Output summary
+# ============================================================
+print(f"Total candidates after read check: {len(final_results)}")
 print("The candidates left are...")
-for k, v in final_dnmc_result.items():
-    print(f"{k[0]}:{k[1]} --> {v}")
+for (chrom, pos), info in final_results.items():
+    print(f"{chrom}:{pos} --> {info}")
     print()
-    
-# ## Create bed file for the candidates
-# ## ===========================================================
-out_bed = f"{child_id}_LR_validated_dnmc.bed"
+
+# ============================================================
+# Write BED (validated sites)
+# ============================================================
+out_bed = f"{child_id}_LR_validated_{label}.bed"
 
 with open(out_bed, "w") as out:
-    for (chrom, pos) in sorted(final_dnmc_result):
+    for (chrom, pos) in sorted(final_results):
         out.write(f"{chrom}\t{pos-1}\t{pos}\n")
-print(f"Wrote {len(final_dnmc_result)} sites to {out_bed}")
 
-## Create bed file for rephasing
-# ## ===========================================================
-size=window/1000
-out_bed = f"{child_id}_dnm_plusminus{int(size)}kb.bed"
+print(f"Wrote {len(final_results)} sites to {out_bed}")
 
-with open(out_bed, "w") as out:
-    for (chrom, pos) in sorted(final_dnmc_result):
+# ============================================================
+# Write BED (windows for rephasing)
+# ============================================================
+size_kb = window // 1000
+window_bed = f"{child_id}_{label}_plusminus{size_kb}kb.bed"
+
+with open(window_bed, "w") as out:
+    for (chrom, pos) in sorted(final_results):
         out.write(f"{chrom}\t{pos-window}\t{pos+window}\n")
-print(f"Wrote {len(final_dnmc_result)} sites to {out_bed}")
+
+print(f"Wrote {len(final_results)} sites to {window_bed}")
 
 
-# Write out the bed file of the candidate
-# print(final_dnmc_result)
+# ============================================================
+# Write supporting read IDs for each haplotype / allele
+# ============================================================
+# Write supporting read IDs only when verbose == T and label == dnmc
+if verbose and label == "dnmc":
+    support_out = f"{child_id}_LR_validated_{label}_support_reads.tsv"
+
+    with open(support_out, "w") as out:
+        out.write("chrom\tpos\ttype\tallele\thaplotype\tread_count\tread_ids\n")
+
+        for (chrom, pos), info in sorted(final_results.items()):
+            for allele_type in ["REF", "ALT"]:
+                allele = info[allele_type]["allele"]
+                hp = info[allele_type]["hp"]
+                count = info[allele_type]["count"]
+                read_ids = info[allele_type]["read_ids"]
+
+                out.write(
+                    f"{chrom}\t{pos}\t{allele_type}\t{allele}\t{hp}\t{count}\t{','.join(read_ids)}\n"
+                )
+
+    print(f"Wrote supporting read IDs to {support_out}")

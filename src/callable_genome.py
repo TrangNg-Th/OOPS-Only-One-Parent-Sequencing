@@ -247,7 +247,7 @@ sampled_df = (
       .reset_index(drop=True)
 )
 
-print("Number of snps sampled:", sampled_df.shape[0])
+print("Number of sampled denominator SNPs chosen from qualified blocks:", sampled_df.shape[0])
 
 total_sampled = sampled_df.shape[0]
 with open(callable_file, "a") as f:

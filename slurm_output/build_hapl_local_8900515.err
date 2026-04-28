@@ -1,0 +1,41 @@
+conda version 25.3.0 python 3.12.10 unloaded.
+conda version 25.3.0 python 3.12.10 loaded.
+This is WhatsHap 2.8 running under Python 3.12.12
+Working on 1 sample from 1 family
+
+# Working on contig chr1 in individual NA12879
+Found 50 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 13 reads covering 50 variants
+Kept 11 reads that cover at least two variants each
+Selected 11 most phase-informative reads covering 50 variants
+Best-case phasing would result in 2 non-singleton phased blocks (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 26 variants (52.0% of accessible variants) between position 225396334 and 225412397
+
+# Working on contig chr17 in individual NA12879
+Found 71 usable heterozygous variants (0 skipped due to missing genotypes)
+Number of supplementary alignments: 0
+Number of non-singleton groups: 0
+Skipped 0 groups
+Found 15 reads covering 71 variants
+Kept 15 reads that cover at least two variants each
+Selected 15 most phase-informative reads covering 71 variants
+Best-case phasing would result in 1 non-singleton phased block (0 singletons). 
+Phasing 1 sample by solving the MEC problem ...
+Largest block contains 71 variants (100.0% of accessible variants) between position 13551128 and 13588268
+
+# Resource usage
+Maximum memory usage: 0.554 GB
+Time spent reading BAM/CRAM:                    8.8 s
+Time spent parsing VCF:                         0.0 s
+Time spent selecting reads:                     0.0 s
+Time spent phasing:                             0.0 s
+Time spent writing VCF:                         0.0 s
+Time spent finding components:                  0.0 s
+Time spent on rest:                             2.1 s
+Total elapsed time:                            11.0 s
+Found 1 sample(s) in input VCF
+Reporting results for sample NA12879

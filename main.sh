@@ -1,22 +1,14 @@
 #!/bin/bash
 
 set -eo pipefail
-export PS1=${PS1:-}   # <-- ADD THIS
+export PS1=${PS1:-}  
 
 
 ################################################################################
-# Project: Platinum pedigree analysis
+# Project: OOPS - Only One Parent Sequencing Mutation Call Pipeline
 ################################################################################
 
 
-# Example of command (for this project)
-# bash main.sh \
-# --prj-dir /N/project/mutation_rate_Mmulatta/platinum-ped-data/aws-data \
-# --sample-child NA12879 --sample-parent NA12877 --part 4
-
-##############################################
-# Configuration (user input)
-##############################################
 usage() {
 cat << EOF
 
@@ -24,8 +16,8 @@ Only One Parent Sequencing Mutation Call Pipeline
 =================================================
 
 This pipeline performs:
-  1. HiFi download + Illumina preprocessing
-  2. Phasing with long reads
+  1. HiFi download + Illumina preprocessing + BAM preprocessing
+  2. Phasing with long reads + VCF (Whatshap) then haplotagging BAM
   3. De novo mutation (DNM) detection
   4. Local rephasing refinement
   5. Callable genome estimation
@@ -50,8 +42,8 @@ Execution control:
 
 Pipeline Parts:
   0   Just print out the configuration
-  1   Data preparation (download + VCF preprocessing)
-  2   Initial phasing (Whatshap)
+  1   Data preparation (download + VCF preprocessing + BAM preprocessing)
+  2   Initial phasing (Whatshap) + haplotagging cleaned BAM
   2b  First DNM detection
   3   Local rephasing around DNMs
   3b  Refined DNM detection
@@ -63,11 +55,11 @@ Optional parameters (with defaults):
 ------------------------------------------------------------------
   --cpus              CPUs for phasing job (default: 8)
   --reference         Reference file (default: prj-dir/reference/chm13v2.0_maskedY_rCRS.fa)
-  --time              Slurm walltime (default: 4:00:00)
+  --time              Slurm walltime (default: 10:00:00)
   --min-rdepth        Minimum read depth (default: 15)
   --max-rdepth        Maximum read depth (default: 50)
   --gt-qual           Minimum genotype quality (default: 30)
-  --nv-quantile       Variant count quantile threshold (default: 0.75)
+  --nv-quantile       Variant count quantile threshold (default: 0.5)
   --mm-diff-min       Minimum mismatch difference threshold (default: 0.1)
   --min-base-qual     Minimum base quality for LR validation (default: 20)
   --min-map-qual      Minimum mapping quality for LR validation (default: 20)
@@ -116,11 +108,11 @@ exit 1
 ##############################################
 
 CPUS=8
-TIME="6:00:00"
+TIME="10:00:00"
 MIN_RDEPTH=15
 MAX_RDEPTH=50
 GT_QUAL=30
-NV_QUANTILE=0.75
+NV_QUANTILE=0.5
 MM_DIFF_MIN=0.1
 MIN_BASE_QUAL=20
 MIN_MAP_QUAL=20
@@ -169,6 +161,7 @@ while [[ $# -gt 0 ]]; do
         --window) WINDW="$2"; shift 2 ;;
         --alt-read-count) ALT_READ_COUNT="$2"; shift 2 ;;
         --verbose) VERBOSE="$2"; shift 2 ;;
+        --source) SOURCE="$2"; shift 2 ;;
         --help) usage ;;
         *) echo "Unknown parameter: $1"; usage ;;
     esac
@@ -236,7 +229,7 @@ source <(grep -v '^##' "${SOURCE_FILE}")
 set +a
 
 ####################################################
-## Final BAM paths
+## Final BAM / VCF paths
 ####################################################
 BAM_CHILD="${BAM_CHILD_URL}/${NAME_BAM_CHILD}"
 BAMIDX_CHILD="${BAM_CHILD_URL}/${NAME_BAMIDX_CHILD}"
@@ -248,6 +241,14 @@ NAME_VCF="${ILLUM_DIR}/${NAME_VCF_FILE}"
 # Reference
 REF="${REF:-${REF_DIR}/${NAME_REFERENCE_FILE}}"
 
+# Long-read BAM naming
+ORIG_BAM_PATH="${BAM_DIR}/${NAME_BAM_CHILD}"
+ORIG_BAM_BASENAME="$(basename "${NAME_BAM_CHILD}" .bam)"
+CLEAN_BAM_PATH="${BAM_DIR}/${ORIG_BAM_BASENAME}_clean.bam"
+CLEAN_BAM_INDEX="${CLEAN_BAM_PATH}.bai"
+HP_BAM_PATH="${BAM_DIR}/${ORIG_BAM_BASENAME}_HP.bam"
+HP_BAM_INDEX="${HP_BAM_PATH}.bai"
+
 ##############################################
 # Print configuration summary
 ##############################################
@@ -258,21 +259,21 @@ echo "Child sample                          : ${SAMPLE_CHILD}"
 echo "Parent sample                         : ${SAMPLE_PARENT}"
 echo "CPUs                                  : ${CPUS}"
 echo "Walltime                              : ${TIME}"
-echo "Min read depth                        : ${MIN_RDEPTH}"
-echo "Max read depth                        : ${MAX_RDEPTH}"
-echo "Genotype quality cutoff               : ${GT_QUAL}"
+echo "Min read depth (SR)                   : ${MIN_RDEPTH}"
+echo "Max read depth (SR)                   : ${MAX_RDEPTH}"
+echo "Genotype quality cutoff(SR)           : ${GT_QUAL}"
 echo "Quantile of nbr variants per blocks   : ${NV_QUANTILE}"
 echo "Mismatch diff threshold               : ${MM_DIFF_MIN}"
 echo "Min base quality (LR)                 : ${MIN_BASE_QUAL}"
 echo "Min mapping quality (LR)              : ${MIN_MAP_QUAL}"
 echo "Window size (bp)                      : ${WINDW}"
-echo "Window size (kb)                      : ${v}"
 echo "Alt read count (LR)                   : ${ALT_READ_COUNT}"
 echo "Verbose LR validation                 : ${VERBOSE}"
 echo "Data source                           : ${SOURCE_FILE}"
 echo "Bam file of the child                 : ${BAM_DIR}/${NAME_BAM_CHILD}"
 echo "Vcf file                              : ${NAME_VCF}"
 echo "Reference file                        : ${REF}"
+echo "Parts to run                          : ${PARTS[*]}"
 echo "END SUMMARY"
 echo "========================================================="
 echo ""
@@ -362,7 +363,84 @@ EOF
 }
 
 
+##############################################
+# 1b. BAM preprocessing
+##############################################
+generate_bam_preprocessing_job() {
 
+    local OUT=./preprocess_bam_${SAMPLE_CHILD}.slurm
+
+    cat << EOF > "${OUT}"
+#!/bin/bash
+#SBATCH -J preprocess_bam_${SAMPLE_CHILD}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --time=02:00:00
+#SBATCH --mem=8G
+#SBATCH -A r00379
+
+set -euo pipefail
+module load samtools
+
+INPUT_BAM="${ORIG_BAM_PATH}"
+OUTPUT_BAM="${CLEAN_BAM_PATH}"
+
+echo "[bam-preprocess] Input BAM: \${INPUT_BAM}"
+echo "[bam-preprocess] Output clean BAM: \${OUTPUT_BAM}"
+
+if [[ ! -f "\${INPUT_BAM}" ]]; then
+    echo "ERROR: input BAM not found: \${INPUT_BAM}"
+    exit 1
+fi
+
+echo "[bam-preprocess] Checking whether BAM contains HP tags"
+
+HAS_HP=0
+if samtools view "\${INPUT_BAM}" \
+    | awk 'index(\$0, "\tHP:i:") {found=1} END{exit !found}'; then
+    HAS_HP=1
+fi
+
+if [[ "\${HAS_HP}" -eq 1 ]]; then
+    echo "[bam-preprocess] HP tag detected. Removing HP tags from BAM."
+
+    samtools view -h "\${INPUT_BAM}" \
+      | awk 'BEGIN{OFS="\t"}
+             /^@/ {print; next}
+             {
+               out = \$1
+               for (i = 2; i <= NF; i++) {
+                 if (\$i !~ /^HP:i:/) out = out OFS \$i
+               }
+               print out
+             }' \
+      | samtools view -b -o "\${OUTPUT_BAM}" -
+
+else
+    echo "[bam-preprocess] No HP tag detected. Renaming BAM to clean BAM."
+    mv "\${INPUT_BAM}" "\${OUTPUT_BAM}"
+
+    if [[ -f "\${INPUT_BAM}.bai" ]]; then
+        mv "\${INPUT_BAM}.bai" "\${OUTPUT_BAM}.bai" || true
+    fi
+fi
+
+echo "[bam-preprocess] Sorting clean BAM"
+samtools sort -o "\${OUTPUT_BAM}.sorted" "\${OUTPUT_BAM}"
+mv "\${OUTPUT_BAM}.sorted" "\${OUTPUT_BAM}"
+
+echo "[bam-preprocess] Indexing clean BAM"
+samtools index "\${OUTPUT_BAM}"
+
+echo "[bam-preprocess] Done"
+EOF
+
+    chmod +x "${OUT}"
+    JOBID=$(sbatch --parsable "${OUT}")
+    echo "${JOBID}"
+    rm "${OUT}"
+}
 
 ##############################################
 # 2. Preprocess VCFs (Extract parent and child vcf file from the full vcf)
@@ -370,9 +448,9 @@ EOF
 
 generate_preprocessing_job() {
 
-    local DEPENDENCY_JOBID=$1
+    # local DEPENDENCY_JOBID=$1
     local OUT=./preprocess_${SAMPLE_CHILD}.slurm
-    echo "Depending on" ${DEPENDENCY_JOBID}
+    # echo "Depending on" ${DEPENDENCY_JOBID}
     cat << EOF > "${OUT}"
 #!/bin/bash
 #SBATCH -J preprocess_${SAMPLE_CHILD}
@@ -382,10 +460,12 @@ generate_preprocessing_job() {
 #SBATCH --time=02:00:00
 #SBATCH --mem=8G
 #SBATCH -A r00379
-#SBATCH --dependency=afterok:${DEPENDENCY_JOBID}
+#SBATCH -o slurm_output/preprocess_.%j.txt
+#SBATCH -e slurm_output/preprocess_.%j_.err
+
 
 set -euo pipefail
-export PS1=${PS1:-}  
+export PS1=\${PS1:-}  
 
 module load bcftools
 
@@ -397,7 +477,7 @@ bcftools view -s ${SAMPLE_CHILD} -Oz -o ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFE
 tabix -p vcf ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.vcf.gz
 tabix -p vcf ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz
 
-# Clean PS tags
+# Clean PS tags (CHILD)
 bcftools +setGT ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz -Ou -- -t a -n u \
 | bcftools annotate -x FORMAT/PS \
 | bcftools view -Oz -o ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
@@ -405,12 +485,14 @@ bcftools +setGT ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz -
 bcftools index ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
 
 
-# Clean PS tags
-bcftools +setGT ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.vcf.gz -Ou -- -t a -n u \
+# Clean PS tags (PARENT)
+bcftools +setGT ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.vcf.gz -Ou -- -t a -n u \
 | bcftools annotate -x FORMAT/PS \
-| bcftools view -Oz -o ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+| bcftools view -Oz -o ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
 
-bcftools index ${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+bcftools index ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+
+echo "[vcf-preprocess] Done"
 
 EOF
 
@@ -460,8 +542,10 @@ norm_and_compare_vcfs(){
 ##############################################
 # 4. Phase the child's illumina vcf using long reads (Slurm job)
 ##############################################
+
+
 generate_phasing_job() {
-    local OUT=${PRJ_DIR}/build_hapl_${SAMPLE_CHILD}.slurm
+    local OUT="${PRJ_DIR}/build_hapl_${SAMPLE_CHILD}.slurm"
 
     cat << EOF > "${OUT}"
 #!/bin/bash
@@ -470,43 +554,128 @@ generate_phasing_job() {
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${CPUS}
 #SBATCH --time=${TIME}
-#SBATCH --mem=8G
+#SBATCH --mem=12G
 #SBATCH -A r00379
+#SBATCH -o slurm_output/build_hapl_%j.txt
+#SBATCH -e slurm_output/build_hapl_%j.err
 
 set -euo pipefail
+export PS1=\${PS1:-}
 
-REF=${REF}
-SAMPLE=${SAMPLE_CHILD}
-
-ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
-HIFI_BAM=${BAM_DIR}/${NAME_BAM_CHILD}
-OUT_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
-
-mkdir -p \${OUT_DIR}
-
+module load bcftools
+module load samtools
 module load conda
 conda activate whatshap-env
 
+REF="${REF}"
+SAMPLE="${SAMPLE_CHILD}"
+
+ILLUM_VCF="${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz"
+CLEAN_BAM="${CLEAN_BAM_PATH}"
+HP_BAM="${HP_BAM_PATH}"
+OUT_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+
+DIPLOID_VCF="\${OUT_DIR}/\${SAMPLE}.illumVCF_LRbam.diploid.vcf.gz"
+PHASED_VCF="\${OUT_DIR}/\${SAMPLE}.illumVCF_LRbam.phased.vcf.gz"
+PHASE_STATS_TSV="\${OUT_DIR}/\${SAMPLE}.illumVCF_LRbam.stats.tsv"
+PHASE_BLOCKS_TSV="\${OUT_DIR}/\${SAMPLE}.illumVCF_LRbam.blocks.tsv"
+
+mkdir -p "\${OUT_DIR}"
+mkdir -p slurm_output
+
+echo "[phase] Input VCF         : \${ILLUM_VCF}"
+echo "[phase] Clean BAM         : \${CLEAN_BAM}"
+echo "[phase] Diploid-only VCF  : \${DIPLOID_VCF}"
+echo "[phase] Phased VCF        : \${PHASED_VCF}"
+echo "[phase] HP-tagged BAM     : \${HP_BAM}"
+
+if [[ ! -f "\${ILLUM_VCF}" ]]; then
+    echo "ERROR: Illumina VCF not found: \${ILLUM_VCF}"
+    exit 1
+fi
+
+if [[ ! -f "\${CLEAN_BAM}" ]]; then
+    echo "ERROR: Clean BAM not found: \${CLEAN_BAM}"
+    exit 1
+fi
+
+if [[ ! -f "\${CLEAN_BAM}.bai" ]]; then
+    echo "[phase] BAM index not found. Creating index for clean BAM."
+    samtools index "\${CLEAN_BAM}"
+fi
+
+echo "[phase] Removing stale outputs"
+rm -f "\${DIPLOID_VCF}" "\${DIPLOID_VCF}.csi" "\${DIPLOID_VCF}.tbi"
+rm -f "\${PHASED_VCF}" "\${PHASED_VCF}.csi" "\${PHASED_VCF}.tbi"
+rm -f "\${PHASE_STATS_TSV}" "\${PHASE_BLOCKS_TSV}"
+rm -f "\${HP_BAM}" "\${HP_BAM}.bai"
+
+echo "[phase] Building diploid-only VCF to avoid mixed-ploidy crashes"
+bcftools view -s "\${SAMPLE}" -Ou "\${ILLUM_VCF}" \
+  | bcftools view -i 'GT!="hap" && GT!="mis"' \
+  -Oz -o "\${DIPLOID_VCF}"
+
+echo "[phase] Indexing diploid-only VCF"
+bcftools index -f "\${DIPLOID_VCF}"
+
+echo "[phase] Checking whether any records remain after diploid filtering"
+N_DIPLOID=\$(bcftools index -n "\${DIPLOID_VCF}")
+echo "[phase] Number of records retained: \${N_DIPLOID}"
+
+if [[ "\${N_DIPLOID}" -eq 0 ]]; then
+    echo "ERROR: No records remained after diploid filtering: \${DIPLOID_VCF}"
+    exit 1
+fi
+
+echo "[phase] Checking for remaining non-diploid-style genotypes"
+N_BAD=\$(bcftools query -f '[%GT\n]' "\${DIPLOID_VCF}" | awk '
+    \$1 !~ /^[.0-9]+[\/|][.0-9]+$/ {bad++}
+    END {print bad+0}
+')
+echo "[phase] Non-diploid-style GT records remaining: \${N_BAD}"
+
+if [[ "\${N_BAD}" -gt 0 ]]; then
+    echo "ERROR: Non-diploid-style GT records still remain in \${DIPLOID_VCF}"
+    exit 1
+fi
+
+echo "[phase] Running whatshap phase on diploid-only VCF"
 whatshap phase \
-  --reference \${REF} \
+  --reference "\${REF}" \
   --ignore-read-groups \
-  -o \${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.phased.vcf.gz \
-  \${ILLUM_VCF} \${HIFI_BAM}
+  -o "\${PHASED_VCF}" \
+  "\${DIPLOID_VCF}" "\${CLEAN_BAM}"
 
+echo "[phase] Checking phased VCF is readable"
+bcftools view -h "\${PHASED_VCF}" >/dev/null
+
+echo "[phase] Rebuilding phased VCF index"
+rm -f "\${PHASED_VCF}.csi" "\${PHASED_VCF}.tbi"
+bcftools index -f "\${PHASED_VCF}"
+
+echo "[phase] Writing phasing stats"
 whatshap stats \
-  --tsv=\${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.stats.tsv \
-  --block-list=\${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.blocks.tsv \
-  \${OUT_DIR}/\${SAMPLE}.illumVCF_hifiOnly.phased.vcf.gz
+  --tsv="\${PHASE_STATS_TSV}" \
+  --block-list="\${PHASE_BLOCKS_TSV}" \
+  "\${PHASED_VCF}"
 
-echo "Done"
+echo "[phase] Haplotagging cleaned BAM"
+whatshap haplotag \
+  --reference "\${REF}" \
+  --ignore-read-groups \
+  -o "\${HP_BAM}" \
+  "\${PHASED_VCF}" \
+  "\${CLEAN_BAM}"
+
+echo "[phase] Indexing haplotagged BAM"
+samtools index "\${HP_BAM}"
+
+echo "[phase] Done"
 EOF
-    # cat "${OUT}"
+
     chmod +x "${OUT}"
     sbatch "${OUT}"
-    rm "${OUT}"
-
 }
-
 ##############################################
 # 5. Analyze phased mom/child variants output files
 ##############################################
@@ -527,14 +696,14 @@ merge_unphased-parent_phased-child_vcfs() {
     
     # Index samples before merging
     bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
-    bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.vcf.gz
+    bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.vcf.gz
 
     # Merge samples into one vcf
     echo "merging samples"
     bcftools merge -m none -Oz \
         -o ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz \
         ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz \
-        ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.vcf.gz
+        ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.vcf.gz
 
     bcftools index ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz #index
     echo "done"
@@ -674,16 +843,19 @@ validate_dnmc_with_hifi_reads(){
 
   conda activate whatshap-env
   
-  local HIFI_BAM=${PRJ_DIR}/hifi/${SAMPLE_CHILD}.${NAME_REFERENCE}.haplotagged.bam
-  local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed
+  local HIFI_BAM="${HP_BAM_PATH}"
+  local DNM_BED="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed"
 
-  python ${WORKING_DIR}/src/dnmc_readcheck.py \
-  ${SAMPLE_CHILD} \
-  ${HIFI_BAM} \
-  ${DNM_BED} \
-  ${MIN_BASE_QUAL} \
-  ${MIN_MAP_QUAL} \
-  ${WINDW} ${ALT_READ_COUNT} F
+  python "${WORKING_DIR}/src/dnmc_readcheck.py" \
+    "${SAMPLE_CHILD}" \
+    "${HIFI_BAM}" \
+    "${DNM_BED}" \
+    "${MIN_BASE_QUAL}" \
+    "${MIN_MAP_QUAL}" \
+    "${WINDW}" \
+    "${ALT_READ_COUNT}" \
+    "T" \
+    "dnmc"
 }
 
 
@@ -698,9 +870,7 @@ validate_dnmc_with_hifi_reads(){
 
 ##############################################
 regenerate_phasing_job() {
-    # local DEPENDENCY_JOBID=$1
-    local OUT=${PRJ_DIR}/build_hapl_${SAMPLE_CHILD}.slurm
-    local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_hifi_child_only_filtered_dnmc.bed
+    local OUT="${PRJ_DIR}/build_hapl_${SAMPLE_CHILD}.slurm"
 
     cat << EOF > "${OUT}"
 #!/bin/bash
@@ -711,54 +881,132 @@ regenerate_phasing_job() {
 #SBATCH --time=${TIME}
 #SBATCH --mem=8G
 #SBATCH -A r00379
+#SBATCH -o slurm_output/build_hapl_local_%j.txt
+#SBATCH -e slurm_output/build_hapl_local_%j.err
 
 set -euo pipefail
-export PS1=${PS1:-}  
+export PS1=\${PS1:-}
 
 module load bcftools
+module load samtools
 module load conda
 conda activate whatshap-env
 
+REF="${REF}"
+SAMPLE="${SAMPLE_CHILD}"
+v="${v}"
 
-REF=${REF}
-SAMPLE=${SAMPLE_CHILD}
-v=${v}
+ILLUM_VCF="${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz"
+CLEAN_BAM="${CLEAN_BAM_PATH}"
 
-ILLUM_VCF=${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
-HIFI_BAM=${BAM_DIR}/${NAME_BAM_CHILD}
+REGIONS_BED="\${SAMPLE}_dnmc_plusminus\${v}kb.bed"
+LOCAL_VCF="\${SAMPLE}_dnmc_plusminus\${v}kb.vcf.gz"
+LOCAL_DIPLOID_VCF="\${SAMPLE}_dnmc_plusminus\${v}kb.diploid.vcf.gz"
+LOCAL_PHASED_VCF="\${SAMPLE}.illumVCF_LRbam.phased.\${v}kb.vcf.gz"
+LOCAL_STATS_TSV="\${SAMPLE}.illumVCF_LRbam.stats.\${v}kb.tsv"
+LOCAL_BLOCKS_TSV="\${SAMPLE}.illumVCF_LRbam.blocks.\${v}kb.tsv"
 
-REGIONS_BED=\${SAMPLE}_dnm_plusminus\${v}kb.bed
-LOCAL_VCF=\${SAMPLE}_dnm_plusminus\${v}kb.vcf.gz
+mkdir -p slurm_output
+
+echo "[local phase] Input VCF          : \${ILLUM_VCF}"
+echo "[local phase] Clean BAM          : \${CLEAN_BAM}"
+echo "[local phase] Regions BED        : \${REGIONS_BED}"
+echo "[local phase] Local VCF          : \${LOCAL_VCF}"
+echo "[local phase] Local diploid VCF  : \${LOCAL_DIPLOID_VCF}"
+echo "[local phase] Local phased VCF   : \${LOCAL_PHASED_VCF}"
+
+if [[ ! -f "\${ILLUM_VCF}" ]]; then
+    echo "ERROR: Illumina VCF not found: \${ILLUM_VCF}"
+    exit 1
+fi
+
+if [[ ! -f "\${CLEAN_BAM}" ]]; then
+    echo "ERROR: Clean BAM not found: \${CLEAN_BAM}"
+    exit 1
+fi
+
+if [[ ! -f "\${REGIONS_BED}" ]]; then
+    echo "ERROR: Regions BED not found: \${REGIONS_BED}"
+    exit 1
+fi
+
+if [[ ! -f "\${CLEAN_BAM}.bai" ]]; then
+    echo "[local phase] BAM index not found. Creating index for clean BAM."
+    samtools index "\${CLEAN_BAM}"
+fi
+
+echo "[local phase] Removing stale local outputs"
+rm -f "\${LOCAL_VCF}" "\${LOCAL_VCF}.csi" "\${LOCAL_VCF}.tbi"
+rm -f "\${LOCAL_DIPLOID_VCF}" "\${LOCAL_DIPLOID_VCF}.csi" "\${LOCAL_DIPLOID_VCF}.tbi"
+rm -f "\${LOCAL_PHASED_VCF}" "\${LOCAL_PHASED_VCF}.csi" "\${LOCAL_PHASED_VCF}.tbi"
+rm -f "\${LOCAL_STATS_TSV}" "\${LOCAL_BLOCKS_TSV}"
 
 echo "[local phase] Subsetting Illumina VCF to local regions"
-
 bcftools view \
-  -R \${REGIONS_BED} \
-  -Oz -o \${LOCAL_VCF} \
-  \${ILLUM_VCF}
+  -R "\${REGIONS_BED}" \
+  -s "\${SAMPLE}" \
+  -Oz -o "\${LOCAL_VCF}" \
+  "\${ILLUM_VCF}"
 
-bcftools index \${LOCAL_VCF}
+echo "[local phase] Indexing local VCF"
+bcftools index -f "\${LOCAL_VCF}"
 
-echo "[local phase] Running whatshap on local regions only"
+N_LOCAL=\$(bcftools index -n "\${LOCAL_VCF}")
+echo "[local phase] Number of records in local VCF: \${N_LOCAL}"
 
+if [[ "\${N_LOCAL}" -eq 0 ]]; then
+    echo "ERROR: No variants found in local regions: \${LOCAL_VCF}"
+    exit 1
+fi
+
+echo "[local phase] Building diploid-only local VCF to avoid mixed-ploidy crashes"
+bcftools view -Ou "\${LOCAL_VCF}" \
+  | bcftools view -i 'GT="het" || GT="hom" || GT="ref" || GT="alt"' \
+  -Oz -o "\${LOCAL_DIPLOID_VCF}"
+
+echo "[local phase] Indexing diploid-only local VCF"
+bcftools index -f "\${LOCAL_DIPLOID_VCF}"
+
+N_DIPLOID=\$(bcftools index -n "\${LOCAL_DIPLOID_VCF}")
+echo "[local phase] Number of diploid local records retained: \${N_DIPLOID}"
+
+if [[ "\${N_DIPLOID}" -eq 0 ]]; then
+    echo "ERROR: No diploid variants remained after filtering: \${LOCAL_DIPLOID_VCF}"
+    exit 1
+fi
+
+echo "[local phase] Optional sanity check: count records whose GT is not diploid-style"
+bcftools query -f '[%GT\n]' "\${LOCAL_DIPLOID_VCF}" | awk '
+    \$1 !~ /^[.0-9]+[\/|][.0-9]+$/ {bad++}
+    END {print "[local phase] Non-diploid-style GT records remaining:", bad+0}
+'
+
+echo "[local phase] Running whatshap on diploid-only local VCF"
 whatshap phase \
-  --reference \${REF} \
-  -o \${SAMPLE}.illumVCF_hifiOnly.phased.\${v}kb.vcf.gz \
-  \${LOCAL_VCF} \${HIFI_BAM}
+  --reference "\${REF}" \
+  --ignore-read-groups \
+  -o "\${LOCAL_PHASED_VCF}" \
+  "\${LOCAL_DIPLOID_VCF}" "\${CLEAN_BAM}"
 
+echo "[local phase] Checking phased local VCF is readable"
+bcftools view -h "\${LOCAL_PHASED_VCF}" >/dev/null
+
+echo "[local phase] Rebuilding phased local VCF index"
+rm -f "\${LOCAL_PHASED_VCF}.csi" "\${LOCAL_PHASED_VCF}.tbi"
+bcftools index -f "\${LOCAL_PHASED_VCF}"
+
+echo "--ignore-read-groups"
 whatshap stats \
-  --tsv=\${SAMPLE}.illumVCF_hifiOnly.stats.\${v}kb.tsv \
-  --block-list=\${SAMPLE}.illumVCF_hifiOnly.blocks.\${v}kb.tsv \
-  \${SAMPLE}.illumVCF_hifiOnly.phased.\${v}kb.vcf.gz
+  --tsv="\${LOCAL_STATS_TSV}" \
+  --block-list="\${LOCAL_BLOCKS_TSV}" \
+  "\${LOCAL_PHASED_VCF}"
 
-echo "Done local DNM re-phasing"
+echo "[local phase] Done"
 EOF
 
     chmod +x "${OUT}"
     sbatch "${OUT}"
-    rm "${OUT}"
 }
-
 
 
 
@@ -777,18 +1025,18 @@ remerge_unphased-parent_phased-child_vcfs() {
     mkdir -p ${MERGED_PHASED_VCF}
 
     # move child vcf to correct place
-    ls ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_hifiOnly* 1>/dev/null 2>&1 && \
-        mv -f ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_hifiOnly* ${PHASED_VCF}/
+    ls ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_LRbam* 1>/dev/null 2>&1 && \
+        mv -f ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_LRbam* ${PHASED_VCF}/
     
     # Index samples before merging
     bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz
-    bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.${v}kb.vcf.gz
+    bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.${v}kb.vcf.gz
 
     # Merge samples into one vcf
     bcftools merge -m none -Oz \
         -o ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.${v}kb.vcf.gz \
         ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz \
-        ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_hifiOnly.phased.${v}kb.vcf.gz
+        ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.${v}kb.vcf.gz
 
     bcftools index ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.${v}kb.vcf.gz #index
     echo "done"
@@ -970,34 +1218,45 @@ REvalidate_dnmc_with_hifi_reads(){
 
   conda activate whatshap-env
   
-  local HIFI_BAM=${PRJ_DIR}/hifi/${SAMPLE_CHILD}.CHM13.haplotagged.bam
-  local DNM_BED=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed
+  local HIFI_BAM="${HP_BAM_PATH}"
+  local DNM_BED="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed"
   local VERBOSE="F"
-  python ${WORKING_DIR}/src/dnmc_readcheck.py \
-  ${SAMPLE_CHILD} \
-  ${HIFI_BAM} \
-  ${DNM_BED} \
-  ${MIN_BASE_QUAL} \
-  ${MIN_MAP_QUAL} \
-  ${WINDW} ${ALT_READ_COUNT} ${VERBOSE}
-}
 
+  python "${WORKING_DIR}/src/dnmc_readcheck.py" \
+    "${SAMPLE_CHILD}" \
+    "${HIFI_BAM}" \
+    "${DNM_BED}" \
+    "${MIN_BASE_QUAL}" \
+    "${MIN_MAP_QUAL}" \
+    "${WINDW}" \
+    "${ALT_READ_COUNT}" \
+    "${VERBOSE}" \
+    "hetc"
+}
 
 final_summary() {
 
-    local WORKING_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
-    local dnmc_file=${WORKING_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv
-    local nb_qualified_snps=${WORKING_DIR}/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.tsv
-    local callable_genome_file=${WORKING_DIR}/mismatch_analysis/denum_calcul/callable_genome.txt
+    local WORKING_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local DENUM_DIR="${WORKING_DIR}/mismatch_analysis/denum_calcul"
+    local dnmc_file="${WORKING_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv"
+    local nb_qualified_snps="${DENUM_DIR}/${SAMPLE_CHILD}_LR_validated_hetc.bed"
+    local callable_genome_file="${DENUM_DIR}/callable_genome.txt"
 
-    # Rename final DNMC file
-    mv ${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.20kb.tsv \
-       ${dnmc_file}
+    mkdir -p "${DENUM_DIR}"
 
-    # ===================== Extract numbers =====================
+    compgen -G "./${SAMPLE_CHILD}*plusminus*" > /dev/null && \
+        mv ./${SAMPLE_CHILD}*plusminus* "${DENUM_DIR}/"
+
+    compgen -G "./${SAMPLE_CHILD}*LR_validated*" > /dev/null && \
+        mv ./${SAMPLE_CHILD}*LR_validated* "${DENUM_DIR}/"
+
+    if [[ -f "${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.20kb.tsv" ]]; then
+        mv -f "${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.20kb.tsv" \
+              "${dnmc_file}"
+    fi
 
     local dnmc_count
-    dnmc_count=$(wc -l < "${dnmc_file}")
+    dnmc_count=$(($(wc -l < "${dnmc_file}") - 1))
 
     local qualified_count
     qualified_count=$(wc -l < "${nb_qualified_snps}")
@@ -1005,43 +1264,43 @@ final_summary() {
     local total_sampled
     total_sampled=$(grep "total_sampled_snps" "${callable_genome_file}" | awk '{print $2}')
 
-    local callable_bases
-    callable_bases=$(grep "total_callable_bases" "${callable_genome_file}" | awk '{print $2}')
-
-    # ===================== Mutation rate calculation =====================
-    # mutation_rate = DNM / [(qualified / total_sampled) * callable_bases]
+    local accessible_bases
+    accessible_bases=$(grep "total_callable_bases" "${callable_genome_file}" | awk '{print $2}')
 
     local mutation_rate="NA"
 
-    if [[ -n "${total_sampled}" && -n "${callable_bases}" && "${total_sampled}" -gt 0 ]]; then
+    if [[ -n "${total_sampled}" && -n "${accessible_bases}" && "${total_sampled}" -gt 0 ]]; then
         mutation_rate=$(awk -v d="${dnmc_count}" \
                             -v q="${qualified_count}" \
                             -v s="${total_sampled}" \
-                            -v c="${callable_bases}" \
+                            -v c="${accessible_bases}" \
                             'BEGIN { printf "%.6e", d / ((q/s) * c) }')
+        callable_bases=$(awk -v q="${qualified_count}" \
+                            -v s="${total_sampled}" \
+                            -v c="${accessible_bases}" \
+                            'BEGIN { printf "%.6e", (q/s) * c }')
+        
     fi
-
-    # ===================== Print summary =====================
 
     echo "================ Final results summary ================="
     echo "De novo candidate        : ${dnmc_file}"
     echo "Child sample             : ${SAMPLE_CHILD}"
     echo "Parent sample            : ${SAMPLE_PARENT}"
-    echo "Min read depth           : ${MIN_RDEPTH}"
-    echo "Max read depth           : ${MAX_RDEPTH}"
-    echo "Genotype quality cutoff  : ${GT_QUAL}"
+    echo "Min read depth (SR)      : ${MIN_RDEPTH}"
+    echo "Max read depth (SR)      : ${MAX_RDEPTH}"
+    echo "Genotype qual cutoff (SR): ${GT_QUAL}"
     echo "Noise quantile           : ${NV_QUANTILE}"
     echo "Mismatch diff threshold  : ${MM_DIFF_MIN}"
-    echo "Min base quality (LR)    : ${MIN_BASE_QUAL}"
-    echo "Min mapping quality (LR) : ${MIN_MAP_QUAL}"
+    echo "Min base quality (SR)    : ${MIN_BASE_QUAL}"
+    echo "Min mapping quality (SR) : ${MIN_MAP_QUAL}"
     echo "Window size (bp)         : ${WINDW}"
-    echo "Window size (kb)         : ${v}"
     echo "Alt read count (LR)      : ${ALT_READ_COUNT}"
     echo "------------------------------------------------"
     echo "DNMC count               : ${dnmc_count}"
     echo "Number of snps qualified : ${qualified_count}"
     echo "Number of snps sampled   : ${total_sampled}"
-    echo "Callable genome size     : ${callable_bases}"
+    echo "Accessible genome size   : ${accessible_bases}"
+    echo "Callable genome size     : ${callable_bases} [=(snp qualified / snp sampled) * accessible genome]"
     echo "Mutation rate            : ${mutation_rate}"
     echo "========================================================="
     echo
@@ -1052,7 +1311,7 @@ final_cleanup(){
     local WORKING_DIR2=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     
     # Remove all intermediate files
-    rm ${WORKING_DIR2}/${SAMPLE_CHILD}.illumVCF_hifiOnly*
+    rm ${WORKING_DIR2}/${SAMPLE_CHILD}.illumVCF_LRbam*
     rm ${WORKING_DIR2}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_mismatch*
     rm ${WORKING_DIR2}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc*
 
@@ -1084,19 +1343,16 @@ main() {
             echo "========== PART 1: Data preparation =========="
 
             # Download data from AWS
-            DOWNLOAD_JOBID=$(download_hifi_data_job)
-            echo "Download job submitted: ${DOWNLOAD_JOBID}"
+            # DOWNLOAD_JOBID=$(download_hifi_data_job)
+            # echo "Download job submitted: ${DOWNLOAD_JOBID}"
 
-            ## Processing vcfs
-            generate_preprocessing_job "${DOWNLOAD_JOBID}"
+     
+            PREPROCESS_VCF_JOBID=$(generate_preprocessing_job)
+            echo "VCF preprocessing job submitted: ${PREPROCESS_VCF_JOBID}"
 
-            # # Create a vcf for each individual
-            # split_vcfs ${SAMPLE_PARENT} ${NAME_REFERENCE} ${ILLUM_DIR}/${NAME_VCF_FILE}
-            # split_vcfs ${SAMPLE_CHILD} ${NAME_REFERENCE} ${ILLUM_DIR}/${NAME_VCF_FILE}
+            PREPROCESS_BAM_JOBID=$(generate_bam_preprocessing_job)
+            echo "BAM preprocessing (check HP tag) job submitted: ${PREPROCESS_BAM_JOBID}" 
 
-            # # # Remove "PS" tags or "|" in genotype
-            # clean_original_vcf_illumina ${SAMPLE_CHILD} ${NAME_REFERENCE}
-            # clean_original_vcf_illumina ${SAMPLE_PARENT} ${NAME_REFERENCE}
 
             # Normalize two sources of vcf in the child ( Illumina / Hifi) - optional
             # norm_and_compare_vcfs
@@ -1120,19 +1376,24 @@ main() {
             echo "========== PART 2B: Merge + first DNM detection =========="
 
             # merge phased vcf of the child to unphased vcf of parent
+            echo "Re-merging parent and child VCFs for DNM detection"
             merge_unphased-parent_phased-child_vcfs
 
             # Extract only positions where there's a Phase Set (PS) associated
+            echo "Extracting phased SNPs with PS tags for DNM candidate detection"
             extract_phased_snp
 
             # Accounting on PS blocks
+            echo "Counting shared alleles per PS block to identify mismatch blocks"
             count_shared_alleles_per_PS_block
 
             # Create a list of dnm candidates
+            echo "Applying filters to identify de novo mutation candidates"
             filter_dnm_candidates
      
 
             # Additional filters with hifi suppport
+            echo "Validating DNM candidates with HiFi read support"
             validate_dnmc_with_hifi_reads
 
         fi

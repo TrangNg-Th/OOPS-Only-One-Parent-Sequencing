@@ -166,7 +166,7 @@ summary_df["mismatch_difference"] = np.where(
 # Threshold 1: large PS blocks only
 # ------------------------------------------------------------------
 n_variants_series = summary_df["n_variants"]
-quantiles = n_variants_series.quantile([0, 0.2, 0.25, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99])
+quantiles = n_variants_series.quantile([0, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99])
 
 print("n_variants quantiles:")
 print(quantiles)
@@ -216,8 +216,19 @@ summary_df = summary_df[summary_df["block_length"] > 1]
 # ------------------------------------------------------------------
 if RECOUNT != "T":
     summary_df = summary_df[summary_df["mismatch_difference"] < MM_DIFF_MIN]
+else:
+    summary_df = summary_df[summary_df["mismatch_difference"] < 0.5] 
+    # when recounting, we allow for more similar mismatch fractions between the two blocks, as the window is smaller and thus the number of variants is smaller, which can lead to more stochasticity in the mismatch fractions
 
+# ------------------------------------------------------------------
+# Threshold 4: Only for recounting DNMs, we require that the max_mm has to be at least 50% 
+# of the number of variants in the block, to ensure that there is a strong signal of
+# mismatch in at least one block (since we use smaller blocks)
 
+# if RECOUNT == "T":
+#     summary_df = summary_df[
+#         (summary_df[["n_mismatches_h0", "n_mismatches_h1"]].max(axis=1) >= 0.20 * summary_df["n_variants"])
+#     ]
 # ------------------------------------------------------------------
 # Identify mismatch positions (candidate DNMs)
 # ------------------------------------------------------------------
@@ -261,6 +272,7 @@ if RECOUNT != "T":
             "PS_child": ps
         })
 elif RECOUNT == "T":
+    print(f"Recounting candidate DNMs from file {DNMC_FILE} with window {WINDOW}bp")
     
     for (chrom, ps), g in merged.groupby(["chrom", "PS_child"]):
         
@@ -271,49 +283,42 @@ elif RECOUNT == "T":
         mask_h0 = (mom == h0[:, None]).any(axis=1)
         mask_h1 = (mom == h1[:, None]).any(axis=1)
 
+        # The logic here is as follows:
+        # - If one block has exactly one mismatch and the other block has more than one mismatch
         if (np.sum(~mask_h0) == 1) and (np.sum(~mask_h1) > 1):
             pos = g.loc[~mask_h0, "pos"].iloc[0]
 
+        # - If one block has exactly one mismatch and the other block has more than one mismatch
         elif (np.sum(~mask_h1) == 1) and (np.sum(~mask_h0) > 1):
             pos = g.loc[~mask_h1, "pos"].iloc[0]
 
-        elif (np.sum(~mask_h1) == 1) and (np.sum(~mask_h0) == 1):
-            pos_h0 = g.loc[~mask_h0, "pos"].iloc[0]
-            pos_h1 = g.loc[~mask_h1, "pos"].iloc[0]
-
-            candidates = [
-                p for p in (pos_h0, pos_h1)
-                if (chrom, p) in dnmc_set
-            ]
-
-            if len(candidates) != 1:
-                continue
-
-            pos = candidates[0]
-
         else:
             continue
+        
 
         if (chrom, pos) not in dnmc_set:
             continue
 
+       
         dnm_records.append({
             "chrom": chrom,
             "pos": pos,
             "PS_child": ps
         })
-    
-dnm_df = pd.DataFrame(dnm_records)
-dnm_df.to_csv(f"{out_dir}/{mom_id}_{child_id}_dnmc.{w}tsv", sep="\t", index=False)
-print("Writing file *dnmc.tsv")
-# BED
-bed = pd.DataFrame({
-    "chrom": dnm_df["chrom"],
-    "start": dnm_df["pos"]-1,
-    "end": dnm_df["pos"]
-}).drop_duplicates()
+if not dnm_records:
+    print("No candidate DNMs found after recounting with the specified criteria.")
+else:
+    dnm_df = pd.DataFrame(dnm_records)
+    dnm_df.to_csv(f"{out_dir}/{mom_id}_{child_id}_dnmc.{w}tsv", sep="\t", index=False)
+    print("Writing file *dnmc.tsv")
+    # BED
+    bed = pd.DataFrame({
+        "chrom": dnm_df["chrom"],
+        "start": dnm_df["pos"]-1,
+        "end": dnm_df["pos"]
+    }).drop_duplicates()
 
-print("Writing file *dnmc.bed")
-bed.to_csv(f"{out_dir}/{mom_id}_{child_id}_dnmc.{w}bed", sep="\t", index=False, header=False)
+    print("Writing file *dnmc.bed")
+    bed.to_csv(f"{out_dir}/{mom_id}_{child_id}_dnmc.{w}bed", sep="\t", index=False, header=False)
 
 
