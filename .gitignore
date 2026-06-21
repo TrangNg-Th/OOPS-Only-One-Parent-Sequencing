@@ -1,3 +1,6 @@
 slurm_output/*
 logs/*
 data/source*
+data/done/*
+main_*
+src/old/*

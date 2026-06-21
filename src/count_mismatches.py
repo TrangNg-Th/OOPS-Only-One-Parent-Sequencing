@@ -9,10 +9,10 @@ import os
 # ------------------------------------------------------------------
 # Argument parsing
 # ------------------------------------------------------------------
-if len(sys.argv) not in (12,13): # one extra arg for passing the python script
+if len(sys.argv) not in (12,13,14): # one extra arg for passing the python script
     print("Usage: python count_mismatches.py "
           "<input_tsv> <out_dir> <min_dp> <max_dp> "
-          "<mom_id> <child_id> <GT_qual> <NV_quantile> "
+          "<parent_id> <child_id> <GT_qual> <NV_quantile> "
           "<MM_diff_min> <WINDOW> <RECOUNT> [DNMC_FILE]")
 
     print()
@@ -21,9 +21,10 @@ if len(sys.argv) not in (12,13): # one extra arg for passing the python script
     print("  out_dir       Output directory")
     print("  min_dp        Minimum read depth per site")
     print("  max_dp        Maximum read depth per site")
-    print("  mom_id        Sample ID of the mother")
+    print("  parent_id        Sample ID of the mother")
     print("  child_id      Sample ID of the child")
     print("  GT_qual       Minimum genotype quality (GQ) per site")
+
     print(
         "  NV_quantile   Quantile threshold on the number of variants per block; "
         "only blocks with a variant count >= this quantile are considered"
@@ -42,6 +43,7 @@ if len(sys.argv) not in (12,13): # one extra arg for passing the python script
     print(
         "recount (T or F) if T (true), the recounting will allow for two haplotype blocks to not have difference in mismatch ( both can have mismatch = 1)"
     )
+    
     sys.exit(1)
 
 
@@ -49,7 +51,7 @@ in_file = sys.argv[1]
 out_dir = sys.argv[2]
 min_dp = int(sys.argv[3])
 max_dp = int(sys.argv[4])
-mom_id = sys.argv[5]
+parent_id = sys.argv[5]
 child_id = sys.argv[6]
 GT_qual = int(sys.argv[7]) # 30
 NV_QUANTILE = float(sys.argv[8]) 
@@ -79,7 +81,7 @@ print("--"*20)
 print("Input:", in_file)
 print("Output dir:", out_dir)
 print("DP range:", min_dp, "-", max_dp)
-print("Mother ID:", mom_id)
+print("Mother ID:", parent_id)
 print("Child ID:", child_id)
 print("Genotype Quality threshold:", GT_qual)
 print("Number of Variants Quantile threshold:", NV_QUANTILE)
@@ -171,7 +173,7 @@ quantiles = n_variants_series.quantile([0, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
 print("n_variants quantiles:")
 print(quantiles)
 print("Writing file *mismatch.tsv")
-summary_file = f"{out_dir}/{mom_id}_{child_id}_mismatch.{w}tsv"
+summary_file = f"{out_dir}/{parent_id}_{child_id}_mismatch.{w}tsv"
 summary_df.to_csv(summary_file, sep="\t", index=False)
 
 # Choose cutoff 
@@ -259,12 +261,14 @@ if RECOUNT != "T":
         mask_h0 = (mom == h0[:, None]).any(axis=1)
         mask_h1 = (mom == h1[:, None]).any(axis=1)
 
-        if np.sum(~mask_h0) == 1:
+        n0, n1 = np.sum(~mask_h0), np.sum(~mask_h1)
+        if n0 == 1 and n1 > 1:
             pos = g.loc[~mask_h0, "pos"].iloc[0]
-        elif np.sum(~mask_h1) == 1:
+        elif n1 == 1 and n0 > 1:
             pos = g.loc[~mask_h1, "pos"].iloc[0]
         else:
             continue
+       
 
         dnm_records.append({
             "chrom": chrom,
@@ -309,7 +313,7 @@ if not dnm_records:
     print("No candidate DNMs found after recounting with the specified criteria.")
 else:
     dnm_df = pd.DataFrame(dnm_records)
-    dnm_df.to_csv(f"{out_dir}/{mom_id}_{child_id}_dnmc.{w}tsv", sep="\t", index=False)
+    dnm_df.to_csv(f"{out_dir}/{parent_id}_{child_id}_dnmc.{w}tsv", sep="\t", index=False)
     print("Writing file *dnmc.tsv")
     # BED
     bed = pd.DataFrame({
@@ -319,6 +323,6 @@ else:
     }).drop_duplicates()
 
     print("Writing file *dnmc.bed")
-    bed.to_csv(f"{out_dir}/{mom_id}_{child_id}_dnmc.{w}bed", sep="\t", index=False, header=False)
+    bed.to_csv(f"{out_dir}/{parent_id}_{child_id}_dnmc.{w}bed", sep="\t", index=False, header=False)
 
 

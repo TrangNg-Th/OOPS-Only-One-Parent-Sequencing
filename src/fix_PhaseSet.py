@@ -21,7 +21,11 @@ out_file = sys.argv[2]
 df = pd.read_csv(in_file, dtype=str)
 
 # Add headers
-df.columns = ["chrom", "pos", "PS_mom", "PS_child", "GT_mom", "GT_child", "DP_mom", "DP_child", "GQ_mom", "GQ_child", "None"]
+df.columns = ["chrom", "pos", "PS_mom", "PS_child",
+              "GT_mom", "GT_child", "DP_mom", "DP_child",
+              "GQ_mom", "GQ_child",
+              "ADref_mom", "ADalt_mom", "ADref_child", "ADalt_child",
+              "None"]
 
 # Drop the last empty column
 df = df.drop(columns=["None"])

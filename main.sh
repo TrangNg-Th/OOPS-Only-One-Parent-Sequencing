@@ -12,92 +12,101 @@ export PS1=${PS1:-}
 usage() {
 cat << EOF
 
-Only One Parent Sequencing Mutation Call Pipeline
-=================================================
+Only One Parent Sequencing (OOPS) — Mutation Call Pipeline
+==========================================================
 
-This pipeline performs:
-  1. HiFi download + Illumina preprocessing + BAM preprocessing
-  2. Phasing with long reads + VCF (Whatshap) then haplotagging BAM
-  3. De novo mutation (DNM) detection
-  4. Local rephasing refinement
-  5. Callable genome estimation
-  6. Final mutation rate calculation
-  7. Optional cleanup of intermediate files
+Estimate germline de novo mutation (DNM) rates from a trio in which only one
+parent has long-read data.
 
 ------------------------------------------------------------------
-Required arguments:
+USAGE
 ------------------------------------------------------------------
-  --prj-dir           Project root directory
-  --sample-child      Child sample ID (e.g. NA12879)
-  --sample-parent     Parent sample ID (e.g. NA12878)
-
-------------------------------------------------------------------
-Execution control:
-------------------------------------------------------------------
-  --part <N ...>      Run specific pipeline parts
-                      Example: --part 1 2 2b
-
-  --all               Run full pipeline:
-                      Parts: 0 1 2 2b 3 3b 4 5
-
-Pipeline Parts:
-  0   Just print out the configuration
-  1   Data preparation (download + VCF preprocessing + BAM preprocessing)
-  2   Initial phasing (Whatshap) + haplotagging cleaned BAM
-  2b  First DNM detection
-  3   Local rephasing around DNMs
-  3b  Refined DNM detection
-  4   Callable genome calculation + mutation rate
-  5   Remove intermediate files
+  ./main.sh --part <PART> --prj-dir <DIR> --sample-child <ID> \\
+            --sample-parent <ID> --source <FILE> [options]
 
 ------------------------------------------------------------------
-Optional parameters (with defaults):
+REQUIRED
 ------------------------------------------------------------------
-  --cpus              CPUs for phasing job (default: 8)
-  --reference         Reference file (default: prj-dir/reference/chm13v2.0_maskedY_rCRS.fa)
-  --time              Slurm walltime (default: 10:00:00)
-  --min-rdepth        Minimum read depth (default: 15)
-  --max-rdepth        Maximum read depth (default: 50)
-  --gt-qual           Minimum genotype quality (default: 30)
-  --nv-quantile       Variant count quantile threshold (default: 0.5)
-  --mm-diff-min       Minimum mismatch difference threshold (default: 0.1)
-  --min-base-qual     Minimum base quality for LR validation (default: 20)
-  --min-map-qual      Minimum mapping quality for LR validation (default: 20)
-  --window            Window size around DNM in bp (default: 20000)
-  --alt-read-count    Minimum ALT-supporting long reads (default: 8)
-  --verbose           T/F verbose long-read validation (default: T)
-  --source            Data source configuration file (Example: source.txt  Must be under: ./data/*.txt. default: ./data/source.txt)
+  --prj-dir <DIR>         Project root directory
+  --sample-child <ID>     Child sample ID  (e.g. NA12879)
+  --sample-parent <ID>    Parent sample ID (e.g. NA12878)
 
 ------------------------------------------------------------------
-Examples:
+WHAT TO RUN  (--part)
 ------------------------------------------------------------------
+  Normal order:  0 -> 1a -> 1b -> 1c -> 2 -> 2b -> 3 -> 3b -> 4
+  Optional:      5 -> 6a   (phase-switch refinement)
 
-Run entire pipeline:
-  ./pipeline.sh \
-    --all \
-    --prj-dir /path/to/project \
-    --reference /path/tp/project/chm13v2.0_maskedY_rCRS.fa \
-    --sample-child NA12879 \
-    --sample-parent NA12878
+  0      Print resolved configuration and exit (run this first)
+  1a     Download data (long-read BAM, Illumina VCF, reference)
+  1b     BAM preprocessing (strip HP tags, sort, index)
+  1c     VCF preprocessing (split joint VCF by sample, drop PS, index)
+  2      Initial phasing (WhatShap) + haplotag the child BAM
+  2b     First DNM detection
+  3      Local rephasing around candidate DNMs (submits a job)
+  3b     Refined DNM detection
+  4      Callable-genome estimation + final mutation rate
+  5      Flag high-mismatch blocks and locally rephase them (optional)
+  6a     Re-evaluate DNMs in rephased blocks (optional)
 
-Run only callable genome + final summary:
-  ./pipeline.sh \
-    --part 4 \
-    --prj-dir /path/to/project \
-    --reference /path/tp/project/chm13v2.0_maskedY_rCRS.fa \
-    --sample-child NA12879 \
-    --sample-parent NA12878 \
-    --source custom_source.txt
+  chain  Submit 2b -> 3 -> 3b -> 4 as ONE dependency chain of Slurm jobs
+         (each step waits for the previous to finish). Individual parts can
+         still be run by hand exactly as above.
 
-Run data prep + phasing only:
-  ./pipeline.sh \
-    --part 1 2 \
-    --prj-dir /path/to/project \
-    --reference /path/tp/project/chm13v2.0_maskedY_rCRS.fa \
-    --sample-child NA12879 \
-    --sample-parent NA12878
+  --all  Run: 0 1a 1b 1c 2 2b 3 3b 4 5 6a
+
+  --part accepts several tokens:  --part 1a 1b 1c 2
 
 ------------------------------------------------------------------
+OPTIONS  (defaults in brackets)
+------------------------------------------------------------------
+  Resources
+    --cpus <N>              CPUs for phasing jobs           [8]
+    --time <HH:MM:SS>       Slurm wall time                 [10:00:00]
+    --reference <FILE>      Reference FASTA                 [<prj-dir>/reference/chm13v2.0_maskedY_rCRS.fa]
+    --source <FILE>         Source config under data/       [example_readtype-coverage_parent_child.txt]
+
+  Site / genotype filters
+    --min-rdepth <N>        Min read depth                  [15]
+    --max-rdepth <N>        Max read depth                  [50]
+    --gt-qual <N>           Min genotype quality (GQ)       [30]
+
+  Block selection
+    --nv-quantile <F>       Min block size by SNP-count quantile  [0.5]
+    --mm-diff-min <F>       Min H0/H1 mismatch asymmetry          [0.1]
+
+  Long-read validation
+    --min-base-qual <N>     Min base quality                [20]
+    --min-map-qual <N>      Min mapping quality             [20]
+    --window <BP>           Window around each candidate    [20000]
+    --alt-read-count <N>    Min ALT-supporting reads        [8]  (use 1-3 for <=10x)
+    --total-rd-ct-min <N>   Min total (REF+ALT) reads       [5]
+    --verbose <T|F>         Verbose LR validation           [T]
+
+  Phase-switch refinement (Parts 5/6a)
+    --window_rephase <BP>     Sub-window when splitting blocks  [100000]
+    --threshold_rephase <N>   Min mismatch count to flag block  [100]
+
+  Misc
+    --exclude-chroms <LIST> Comma-separated chroms to skip  [chrX,chrY,chrM]
+
+------------------------------------------------------------------
+EXAMPLES
+------------------------------------------------------------------
+  # 0. Check configuration
+  ./main.sh --part 0 --prj-dir /path/OOPS_hifi_5x_NA12879_NA12878 \\
+    --sample-child NA12879 --sample-parent NA12878 \\
+    --source hifi_5x_NA12879_NA12878.txt
+
+  # Run detection-to-rate as one chained submission
+  ./main.sh --part chain --prj-dir /path/OOPS_hifi_5x_NA12879_NA12878 \\
+    --sample-child NA12879 --sample-parent NA12878 \\
+    --source hifi_5x_NA12879_NA12878.txt \\
+    --nv-quantile 0.5 --alt-read-count 2 --window 20000 --total-rd-ct-min 10
+
+  # Or one part at a time
+  ./main.sh --part 2b --prj-dir /path --sample-child NA12879 \\
+    --sample-parent NA12878 --source hifi_5x_NA12879_NA12878.txt
 
 EOF
 exit 1
@@ -121,6 +130,11 @@ ALT_READ_COUNT=8
 VERBOSE=T
 RECOUNT=T
 NOTRECOUNT=F
+THRESHOLD_REPHASE=100
+EXCLUDE_CHROMS="chrX,chrY,chrM"
+WINDOW_REPHASE=100000
+REPHASE_SUFFIX="_rephase"
+TOTAL_READ_COUNT_MIN=5
 
 
 ##############################################
@@ -141,7 +155,7 @@ while [[ $# -gt 0 ]]; do
             done
             ;;
         --all)
-            PARTS=("0" "1" "2" "2b" "3" "3b" "4" "5")
+            PARTS=("0" "1a" "1b" "1c" "2" "2b" "3" "3b" "4" "5" "6a" "chain")
             shift
             ;;
 
@@ -162,6 +176,10 @@ while [[ $# -gt 0 ]]; do
         --alt-read-count) ALT_READ_COUNT="$2"; shift 2 ;;
         --verbose) VERBOSE="$2"; shift 2 ;;
         --source) SOURCE="$2"; shift 2 ;;
+        --window_rephase) WINDOW_REPHASE="$2"; shift 2 ;;
+        --threshold_rephase) THRESHOLD_REPHASE="$2"; shift 2 ;;
+        --exclude-chroms) EXCLUDE_CHROMS="$2"; shift 2 ;;
+        --total-rd-ct-min) TOTAL_READ_COUNT_MIN="$2"; shift 2 ;;
         --help) usage ;;
         *) echo "Unknown parameter: $1"; usage ;;
     esac
@@ -212,7 +230,7 @@ DEPENDENCIES_FILE="${WORKING_DIR}/environment.yml"
 if [[ -n "${SOURCE:-}" ]]; then
     SOURCE_FILE="${WORKING_DIR}/data/${SOURCE}"
 else
-    SOURCE_FILE="${WORKING_DIR}/data/source.txt"
+    SOURCE_FILE="${WORKING_DIR}/data/example_readtype-coverage_parent_child.txt"
 fi
 
 
@@ -249,6 +267,9 @@ CLEAN_BAM_INDEX="${CLEAN_BAM_PATH}.bai"
 HP_BAM_PATH="${BAM_DIR}/${ORIG_BAM_BASENAME}_HP.bam"
 HP_BAM_INDEX="${HP_BAM_PATH}.bai"
 
+# Parent Illumina BAM (for parental allele evidence at DNM candidates)
+ORIG_BAM_PARENT_PATH="${BAM_DIR}/${NAME_BAM_PARENT}"
+
 ##############################################
 # Print configuration summary
 ##############################################
@@ -267,25 +288,32 @@ echo "Mismatch diff threshold               : ${MM_DIFF_MIN}"
 echo "Min base quality (LR)                 : ${MIN_BASE_QUAL}"
 echo "Min mapping quality (LR)              : ${MIN_MAP_QUAL}"
 echo "Window size (bp)                      : ${WINDW}"
+echo "Window size for rephasing (bp)        : ${WINDOW_REPHASE}"
+echo "Mismatch count threshold for rephase  : ${THRESHOLD_REPHASE}"
 echo "Alt read count (LR)                   : ${ALT_READ_COUNT}"
 echo "Verbose LR validation                 : ${VERBOSE}"
-echo "Data source                           : ${SOURCE_FILE}"
+echo "Data source file name                 : ${SOURCE_FILE}"
+echo "Bam file of the parent                : ${BAM_PARENT_URL}/${NAME_BAM_PARENT}"
 echo "Bam file of the child                 : ${BAM_DIR}/${NAME_BAM_CHILD}"
 echo "Vcf file                              : ${NAME_VCF}"
 echo "Reference file                        : ${REF}"
+echo "Excluded chroms                       : ${EXCLUDE_CHROMS}"
+echo "Total read count minimum for dnmc     : ${TOTAL_READ_COUNT_MIN}"
 echo "Parts to run                          : ${PARTS[*]}"
 echo "END SUMMARY"
 echo "========================================================="
 echo ""
 
 
-
-
-
 ##############################################
 # Load modules
 ##############################################
 # If on HPS, load these modules, if not, skip
+
+
+# ===========================================================================
+## STEP 0 - Load modules and print configuration summary
+## ==========================================================================
 load_modules() {
 
     if command -v module &> /dev/null; then
@@ -297,22 +325,24 @@ load_modules() {
 
 }
 
-##############################################
-# 1. Download data from AWS
-##############################################
+# ===========================================================================
+## STEP 1A - Download data (BAM, VCF, reference)
+## ==========================================================================
 
-download_hifi_data_job() {
+download_data_job() {
 
-    local OUT=./download_hifi_${SAMPLE_CHILD}.slurm
+    local OUT=./download_data_${SAMPLE_CHILD}.slurm
     cat << EOF > "${OUT}"
 #!/bin/bash
-#SBATCH -J download_hifi_${SAMPLE_CHILD}
+#SBATCH -J download_data_${SAMPLE_CHILD}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=08:00:00
 #SBATCH --mem=4G
 #SBATCH -A r00379
+#SBATCH -o slurm_output/download_.%j.txt
+#SBATCH -e slurm_output/download_.%j_.err
 
 set -euo pipefail
 
@@ -329,11 +359,22 @@ mkdir -p \${BAM_DIR}
 mkdir -p \${ILLUM_DIR}
 
 
-echo "[download] Downloading HiFi BAM for \${SAMPLE}"
+echo "[download] Downloading long-read BAM for \${SAMPLE}"
 
 aws s3 cp --no-sign-request ${BAM_CHILD} \${BAM_DIR}/${NAME_BAM_CHILD}
 
 aws s3 cp --no-sign-request ${BAMIDX_CHILD} \${BAM_DIR}/${NAME_BAMIDX_CHILD}
+
+echo "[download] Downloading parent Illumina BAM for ${SAMPLE_PARENT}"
+
+aws s3 cp --no-sign-request ${BAM_PARENT_URL}/${NAME_BAM_PARENT} \${BAM_DIR}/${NAME_BAM_PARENT}
+aws s3 cp --no-sign-request ${BAM_PARENT_URL}/${NAME_BAMIDX_PARENT} \${BAM_DIR}/${NAME_BAMIDX_PARENT}
+
+if [[ ! -f "\${BAM_DIR}/${NAME_BAM_PARENT}.bai" \
+   && ! -f "\${BAM_DIR}/$(basename ${NAME_BAM_PARENT} .bam).bai" ]]; then
+    echo "[download] Parent BAM index not found; building one"
+    samtools index \${BAM_DIR}/${NAME_BAM_PARENT}
+fi
 
 mkdir -p "${REF_DIR}"
 
@@ -358,14 +399,14 @@ EOF
 
     JOBID=$(sbatch --parsable "${OUT}")
     echo "${JOBID}"
-    # sbatch "${OUT}"
     rm "${OUT}"
 }
 
 
-##############################################
-# 1b. BAM preprocessing
-##############################################
+# ===========================================================================
+## STEP 1B - BAM preprocessing (remove HP tags if present, sort, index)
+## ==========================================================================
+
 generate_bam_preprocessing_job() {
 
     local OUT=./preprocess_bam_${SAMPLE_CHILD}.slurm
@@ -376,9 +417,11 @@ generate_bam_preprocessing_job() {
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --time=02:00:00
+#SBATCH --time=06:00:00
 #SBATCH --mem=8G
 #SBATCH -A r00379
+#SBATCH -o slurm_output/prepr_bam_.%j.txt
+#SBATCH -e slurm_output/prepr_bam_.%j_.err
 
 set -euo pipefail
 module load samtools
@@ -442,26 +485,25 @@ EOF
     rm "${OUT}"
 }
 
-##############################################
-# 2. Preprocess VCFs (Extract parent and child vcf file from the full vcf)
-##############################################
 
-generate_preprocessing_job() {
+# ===========================================================================
+## STEP 1C - VCF preprocessing (split joint VCF by sample, remove PS tags, index)
+## ==========================================================================
 
-    # local DEPENDENCY_JOBID=$1
-    local OUT=./preprocess_${SAMPLE_CHILD}.slurm
-    # echo "Depending on" ${DEPENDENCY_JOBID}
+generate_vcf_preprocessing_job() {
+
+    local OUT=./preprocess_vcf_${SAMPLE_CHILD}.slurm
     cat << EOF > "${OUT}"
 #!/bin/bash
-#SBATCH -J preprocess_${SAMPLE_CHILD}
+#SBATCH -J preprocess_vcf_${SAMPLE_CHILD}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --time=02:00:00
 #SBATCH --mem=8G
 #SBATCH -A r00379
-#SBATCH -o slurm_output/preprocess_.%j.txt
-#SBATCH -e slurm_output/preprocess_.%j_.err
+#SBATCH -o slurm_output/preprocess_vcf_.%j.txt
+#SBATCH -e slurm_output/preprocess_vcf_.%j_.err
 
 
 set -euo pipefail
@@ -497,52 +539,17 @@ echo "[vcf-preprocess] Done"
 EOF
 
     chmod +x "${OUT}"
-    sbatch "${OUT}"
+    JOBID=$(sbatch --parsable "${OUT}")
+    echo "${JOBID}"
     rm "${OUT}"
 }
 
 
 
-###################################################
-## 3.5 (optional) Preprocess vcfs ( normalize and compare illumina and hifi vcfs)
-###################################################
-## These output files are for analysis of False positive. 
-## They don't have to be used for phasing as Whatshap will realign things
-norm_and_compare_vcfs(){
 
-    local ILLUM_VCF_CHILD_in=${ILLUM_DIR}/${SAMPLE_CHILD}.CHM13.illumina.unphased.noPS.vcf.gz
-    local ILLUM_VCF_CHILD_out=${ILLUM_DIR}/${SAMPLE_CHILD}.CHM13.illumina.unphased.noPS.normed.vcf.gz
-
-    # local HIFI_VCF_CHILD_in=${BAM_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.vcf.gz
-    # local HIFI_VCF_CHILD_out=${BAM_DIR}/${SAMPLE_CHILD}.CHM13.deepvariant.glnexus.oa.normed.vcf.gz
-
-    local CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY"
-
-    echo "Normalizing Illumina VCF (autosomes + X,Y)"
-    bcftools norm \
-      -f ${REF} \
-      -m -any \
-      -r ${CHRS} \
-      ${ILLUM_VCF_CHILD_in} \
-      -Oz -o ${ILLUM_VCF_CHILD_out}
-
-    # echo "Normalizing HiFi VCF (autosomes + X,Y)"
-    # bcftools norm \
-    #   -f ${REF} \
-    #   -m -any \
-    #   -r ${CHRS} \
-    #   ${HIFI_VCF_CHILD_in} \
-    #   -Oz -o ${HIFI_VCF_CHILD_out}
-
-    bcftools index ${ILLUM_VCF_CHILD_out}
-    # bcftools index ${HIFI_VCF_CHILD_out}
-}
-
-
-##############################################
-# 4. Phase the child's illumina vcf using long reads (Slurm job)
-##############################################
-
+# ===========================================================================
+## STEP 2 - Initial phasing with Whatshap + haplotagging (take about 1 hour per sample)
+## ==========================================================================
 
 generate_phasing_job() {
     local OUT="${PRJ_DIR}/build_hapl_${SAMPLE_CHILD}.slurm"
@@ -670,15 +677,81 @@ whatshap haplotag \
 echo "[phase] Indexing haplotagged BAM"
 samtools index "\${HP_BAM}"
 
+echo "[phase] Verifying haplotagged BAM integrity"
+if ! samtools quickcheck -v "\${HP_BAM}"; then
+    echo "ERROR: \${HP_BAM} fails quickcheck after haplotag"
+    exit 1
+fi
+
 echo "[phase] Done"
 EOF
 
     chmod +x "${OUT}"
     sbatch "${OUT}"
 }
-##############################################
-# 5. Analyze phased mom/child variants output files
-##############################################
+
+
+# ===========================================================================
+## STEP 2b : Merge phased child VCF with unphased parent VCF, extract phased SNPs, and count shared alleles per haplotype block
+## ==========================================================================
+
+
+# ===========================================================================
+## Helper: is the 2b DNM window BED empty (i.e. 0 LR-validated candidates)?
+## Returns 0 (true) when there are zero candidates to refine.
+## Used by Parts 3, 3b, 4 to self-skip the local-rephasing refinement and let
+## the chain finish with a d=0 mutation rate instead of crashing on an empty
+## regions file.
+## ==========================================================================
+dnm_candidates_are_empty() {
+    local MM_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis"
+    local WIN_BED="${MM_DIR}/${SAMPLE_CHILD}_dnmc_plusminus${v}kb.bed"
+    # Empty if the window BED is missing or has no data rows.
+    if [[ ! -s "${WIN_BED}" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Write a final_dnmc file that has the standard header but ZERO data rows, so
+# Part 4's final_summary reports DNMC count = 0 instead of failing on a missing
+# file. Header mirrors what count_mismatches.py emits for the dnmc.20kb.tsv.
+write_empty_final_dnmc() {
+    local PHASED_VCF="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local dnmc_file="${PHASED_VCF}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv"
+    if [[ ! -f "${dnmc_file}" ]]; then
+        printf '# zero LR-validated DNM candidates\n' > "${dnmc_file}"
+        echo "[zero-dnm] Wrote empty final DNM file: ${dnmc_file}"
+    fi
+}
+
+# ===========================================================================
+## Helper: ensure a bgzipped VCF has an index at least as new as the file.
+## Rebuilds the .csi if it is missing OR older than the VCF, preventing the
+## "[W::hts_idx_load3] The index file is older than the data file" warning and
+## the inconsistent/partial reads it can cause. Safe to call repeatedly.
+## ==========================================================================
+ensure_fresh_vcf_index() {
+    local vcf="$1"
+    if [[ ! -f "${vcf}" ]]; then
+        echo "[index] WARNING: VCF not found, cannot index: ${vcf}"
+        return 0
+    fi
+
+    local csi="${vcf}.csi"
+    local tbi="${vcf}.tbi"
+
+    # Reindex if no index exists, or if either index is older than the VCF.
+    if [[ ! -f "${csi}" && ! -f "${tbi}" ]] \
+       || { [[ -f "${csi}" && "${vcf}" -nt "${csi}" ]]; } \
+       || { [[ -f "${tbi}" && "${vcf}" -nt "${tbi}" ]]; }; then
+        echo "[index] (Re)building index for ${vcf}"
+        rm -f "${csi}" "${tbi}"
+        bcftools index -f "${vcf}"
+    else
+        echo "[index] Index is up to date for ${vcf}"
+    fi
+}
 
 
 merge_unphased-parent_phased-child_vcfs() {
@@ -686,26 +759,30 @@ merge_unphased-parent_phased-child_vcfs() {
     rm -f ./slurm*out
     rm -f ./typescript
 
-    # Make and move phased vcfs to correct directories
     local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
 
     mkdir -p ${PHASED_VCF}
     mkdir -p ${MERGED_PHASED_VCF}
 
-    
-    # Index samples before merging
-    bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
-    bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.vcf.gz
+    local PARENT_VCF=${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
+    local CHILD_VCF=${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.vcf.gz
 
-    # Merge samples into one vcf
+    # Ensure indexes exist AND are newer than their VCFs. The old code only
+    # indexed when an index was ABSENT, so a stale (older-than-VCF) index
+    # slipped through and caused: "[W::hts_idx_load3] The index file is older
+    # than the data file", which can yield partial/NaN reads downstream.
+    ensure_fresh_vcf_index "${PARENT_VCF}"
+    ensure_fresh_vcf_index "${CHILD_VCF}"
+
     echo "merging samples"
     bcftools merge -m none -Oz \
         -o ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz \
-        ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz \
-        ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.vcf.gz
+        "${PARENT_VCF}" \
+        "${CHILD_VCF}"
 
-    bcftools index ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz #index
+    local MERGED_VCF=${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz
+    bcftools index -f "${MERGED_VCF}"
     echo "done"
 }
 
@@ -728,7 +805,7 @@ extract_phased_snp() {
     -Ou \
     | bcftools query \
         -s ${SAMPLE_PARENT},${SAMPLE_CHILD} \
-        -f '%CHROM,%POS,[%PS,][%GT,][%DP,][%GQ,]\n' \
+        -f '%CHROM,%POS,[%PS,][%GT,][%DP,][%GQ,][%AD{0},][%AD{1},]\n' \
         > ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv
 
 
@@ -750,7 +827,6 @@ extract_phased_snp() {
     }
 
 
-## I think I should apply loose threshold here so that I can get more candidates?
 count_shared_alleles_per_PS_block() {
   local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
   local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
@@ -775,10 +851,14 @@ count_shared_alleles_per_PS_block() {
   echo "Done"
 }
 
+
 filter_dnm_candidates() {
+    echo "[DNM] Filtering de novo mutation candidates"
+
     local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
+
     local BED=${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed
     local MERGED_VCF=${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz
     local OUT_VCF=${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.vcf.gz
@@ -787,10 +867,19 @@ filter_dnm_candidates() {
     local OUT_TSV_ORG=${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.tsv
     local OUT_BED_ORG=${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed
 
+    if [[ ! -s "${BED}" ]]; then
+        echo "ERROR: candidate BED not found or empty: ${BED}"
+        return 1
+    fi
+
+    if [[ ! -f "${MERGED_VCF}" ]]; then
+        echo "ERROR: merged VCF not found: ${MERGED_VCF}"
+        return 1
+    fi
 
     echo "[DNM] Subsetting merged VCF using BED regions (biallelic SNPs only)"
 
-    # Restrict to biallelic SNPs
+    # Restrict to biallelic SNPs in the candidate regions
     bcftools view \
         -R "${BED}" \
         -m2 -M2 -v snps \
@@ -800,15 +889,28 @@ filter_dnm_candidates() {
 
     bcftools index -f "${OUT_VCF}"
 
+    # Sanity check: parent must be column 0, child column 1
+    local col0
+    col0=$(bcftools query -l "${OUT_VCF}" | sed -n '1p')
+    if [[ "${col0}" != "${SAMPLE_PARENT}" ]]; then
+        echo "ERROR: expected ${SAMPLE_PARENT} as sample[0] in ${MERGED_VCF}, got ${col0}."
+        return 1
+    fi
+
     echo "[DNM] Applying genotype / depth / allele-balance filters"
 
-    filter_expr="
+    # [0] = parent : must be hom-ref, no ALT-supporting reads
+    # [1] = child  : must be phased het, with both REF and ALT support
+    local filter_expr="
     (FMT/GT[1]==\"0|1\" || FMT/GT[1]==\"1|0\") &&
     FMT/GT[0]==\"0/0\" &&
-
-    FMT/DP>=${MIN_RDEPTH} && FMT/DP<=${MAX_RDEPTH} &&
-    FMT/GQ>=${GT_QUAL} &&
-
+    FMT/GT[0]!=\"1/1\" &&
+    FMT/GT[0]!=\"0/1\" &&
+    FMT/GT[0]!=\"1/0\" &&
+    FMT/DP[0]>=${MIN_RDEPTH} && FMT/DP[0]<=${MAX_RDEPTH} &&
+    FMT/DP[1]>=${MIN_RDEPTH} && FMT/DP[1]<=${MAX_RDEPTH} &&
+    FMT/GQ[0]>=${GT_QUAL} &&
+    FMT/GQ[1]>=${GT_QUAL} &&
     FMT/AD[1:1]>5 &&
     FMT/AD[1:0]>5 &&
     FMT/AD[0:1]==0
@@ -819,7 +921,6 @@ filter_dnm_candidates() {
         -f '%CHROM\t%POS\t[%GT\t][%DP\t][%GQ\t][%AD\t]\n' \
     > "${OUT_TSV}"
 
-    # Create a bed file
     echo "[DNM] Creating filtered DNMC BED file"
 
     bcftools view "${OUT_VCF}" -i "${filter_expr}" \
@@ -827,24 +928,27 @@ filter_dnm_candidates() {
     | awk 'BEGIN{OFS="\t"} {print $1, $2-1, $2}' \
     > "${OUT_BED}"
 
-    # Clean up
-    mv ${OUT_BED} ${OUT_BED_ORG}
-    mv ${OUT_TSV} ${OUT_TSV_ORG}
+    # Overwrite the unfiltered candidate files with the filtered set
+    mv "${OUT_BED}" "${OUT_BED_ORG}"
+    mv "${OUT_TSV}" "${OUT_TSV_ORG}"
 
     echo "[DNM] Done"
-    echo "[DNM] Output VCF: ${OUT_VCF}"
-    echo "[DNM] Output TSV: ${OUT_TSV_ORG}"
-    echo "[DNM] Output BED: ${OUT_BED_ORG}"
-
+    echo "[DNM] Output VCF : ${OUT_VCF}"
+    echo "[DNM] Output TSV : ${OUT_TSV_ORG}"
+    echo "[DNM] Output BED : ${OUT_BED_ORG}"
+    echo "[DNM] Candidate count: $(wc -l < "${OUT_BED_ORG}")"
 }
 
 
-validate_dnmc_with_hifi_reads(){
+validate_dnmc_with_long_reads(){
 
   conda activate whatshap-env
-  
+
   local HIFI_BAM="${HP_BAM_PATH}"
-  local DNM_BED="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed"
+  local OUT_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis"
+  local DNM_BED="${OUT_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed"
+  echo "[dnmc-check] Validating DNM candidates with long-read evidence"
+  echo "[dnmc-check] LR BAM: ${HIFI_BAM}"
 
   python "${WORKING_DIR}/src/dnmc_readcheck.py" \
     "${SAMPLE_CHILD}" \
@@ -855,24 +959,155 @@ validate_dnmc_with_hifi_reads(){
     "${WINDW}" \
     "${ALT_READ_COUNT}" \
     "T" \
-    "dnmc"
+    "dnmc" \
+    "${TOTAL_READ_COUNT_MIN}" \
+    "${OUT_DIR}"
+
+    echo "[dnmc-check] Done validating DNMC candidates with long-read evidence"
+
+}
+
+
+validate_dnmc_with_parent_bam() {
+    echo "[parent-check] Validating DNM candidates against parent Illumina BAM"
+
+    conda activate whatshap-env
+
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
+    local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis
+    local MERGED_PHASED_VCF=${PHASED_VCF}/merged
+
+    local IN_BED="${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.bed"
+    local OUT_BED="${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.parentBAM.bed"
+    local MERGED_VCF="${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz"
+    local PARENT_BAM="${ORIG_BAM_PARENT_PATH}"
+    local MAX_PARENT_ALT=1
+
+    if [[ ! -s "${IN_BED}" ]]; then
+        echo "[parent-check] No candidates in ${IN_BED}; nothing to do"
+        return 0
+    fi
+
+    if [[ ! -f "${PARENT_BAM}" ]]; then
+        echo "[parent-check] WARNING: parent BAM not found at ${PARENT_BAM}"
+        echo "[parent-check] Skipping parent-BAM validation (results may include FN-parent DNMs)"
+        return 0
+    fi
+
+    # Make sure the parent BAM is indexed
+    if [[ ! -f "${PARENT_BAM}.bai" && ! -f "${PARENT_BAM%.bam}.bai" ]]; then
+        echo "[parent-check] Indexing parent BAM"
+        samtools index "${PARENT_BAM}"
+    fi
+
+    local N_BEFORE
+    N_BEFORE=$(wc -l < "${IN_BED}")
+
+    python "${WORKING_DIR}/src/parent_readcheck.py" \
+        "${SAMPLE_PARENT}" \
+        "${PARENT_BAM}" \
+        "${MERGED_VCF}" \
+        "${IN_BED}" \
+        "${OUT_BED}" \
+        "${MIN_BASE_QUAL}" \
+        "${MIN_MAP_QUAL}" \
+        "${MAX_PARENT_ALT}" \
+        "${MISMATCH_ANALYSIS}"
+
+    # Swap filtered BED into the canonical location
+    mv "${OUT_BED}" "${IN_BED}"
+
+    local N_AFTER
+    N_AFTER=$(wc -l < "${IN_BED}")
+
+    echo "[parent-check] Candidates before: ${N_BEFORE}"
+    echo "[parent-check] Candidates after : ${N_AFTER}"
+    echo "[parent-check] Removed by parent-BAM evidence: $((N_BEFORE - N_AFTER))"
 }
 
 
 
-### ===================================================================================
-## Second validation step
-## ======================================================================================
 
-## ======================================================================
+# ===========================================================================
+## STEP 3: Local rephasing around candidate DNMs  (Option-A refactor)
+## ==========================================================================
 
+_run_local_phasing_body() {
+    set -euo pipefail
 
+    module load bcftools || true
+    module load samtools || true
+    module load conda || true
+    conda activate whatshap-env
 
-##############################################
+    local SAMPLE="${SAMPLE_CHILD}"
+    local MM_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/"
+
+    local ILLUM_VCF="${ILLUM_DIR}/${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz"
+    local CLEAN_BAM="${CLEAN_BAM_PATH}"
+
+    local REGIONS_BED="${MM_DIR}/${SAMPLE}_dnmc_plusminus${v}kb.bed"
+
+    mkdir -p "${MM_DIR}"
+    cd "${MM_DIR}"
+
+    local LOCAL_VCF="${SAMPLE}_dnmc_plusminus${v}kb.vcf.gz"
+    local LOCAL_DIPLOID_VCF="${SAMPLE}_dnmc_plusminus${v}kb.diploid.vcf.gz"
+    local LOCAL_PHASED_VCF="${SAMPLE}.illumVCF_LRbam.phased.${v}kb.vcf.gz"
+    local LOCAL_STATS_TSV="${SAMPLE}.illumVCF_LRbam.stats.${v}kb.tsv"
+    local LOCAL_BLOCKS_TSV="${SAMPLE}.illumVCF_LRbam.blocks.${v}kb.tsv"
+
+    echo "[local phase] Regions BED        : ${REGIONS_BED}"
+    echo "[local phase] Working dir        : ${MM_DIR}"
+
+    if [[ ! -f "${ILLUM_VCF}" ]]; then echo "ERROR: Illumina VCF not found: ${ILLUM_VCF}"; return 1; fi
+    if [[ ! -f "${CLEAN_BAM}" ]]; then echo "ERROR: Clean BAM not found: ${CLEAN_BAM}"; return 1; fi
+    if [[ ! -f "${REGIONS_BED}" ]]; then echo "ERROR: Regions BED not found: ${REGIONS_BED}"; return 1; fi
+    if [[ ! -f "${CLEAN_BAM}.bai" ]]; then samtools index "${CLEAN_BAM}"; fi
+
+    rm -f "${LOCAL_VCF}" "${LOCAL_VCF}.csi" "${LOCAL_VCF}.tbi"
+    rm -f "${LOCAL_DIPLOID_VCF}" "${LOCAL_DIPLOID_VCF}.csi" "${LOCAL_DIPLOID_VCF}.tbi"
+    rm -f "${LOCAL_PHASED_VCF}" "${LOCAL_PHASED_VCF}.csi" "${LOCAL_PHASED_VCF}.tbi"
+    rm -f "${LOCAL_STATS_TSV}" "${LOCAL_BLOCKS_TSV}"
+
+    echo "[local phase] Subsetting Illumina VCF to local regions"
+    bcftools view -R "${REGIONS_BED}" -s "${SAMPLE}" -Oz -o "${LOCAL_VCF}" "${ILLUM_VCF}"
+    bcftools index -f "${LOCAL_VCF}"
+
+    local N_LOCAL
+    N_LOCAL=$(bcftools index -n "${LOCAL_VCF}")
+    if [[ "${N_LOCAL}" -eq 0 ]]; then echo "ERROR: No variants found in local regions"; return 1; fi
+
+    echo "[local phase] Building diploid-only local VCF"
+    bcftools view -Ou "${LOCAL_VCF}" \
+      | bcftools view -i 'GT="het" || GT="hom" || GT="ref" || GT="alt"' \
+      -Oz -o "${LOCAL_DIPLOID_VCF}"
+    bcftools index -f "${LOCAL_DIPLOID_VCF}"
+
+    local N_DIPLOID
+    N_DIPLOID=$(bcftools index -n "${LOCAL_DIPLOID_VCF}")
+    if [[ "${N_DIPLOID}" -eq 0 ]]; then echo "ERROR: No diploid variants remained"; return 1; fi
+
+    echo "[local phase] Running whatshap"
+    whatshap phase --reference "${REF}" --ignore-read-groups \
+      -o "${LOCAL_PHASED_VCF}" "${LOCAL_DIPLOID_VCF}" "${CLEAN_BAM}"
+
+    bcftools view -h "${LOCAL_PHASED_VCF}" >/dev/null
+    rm -f "${LOCAL_PHASED_VCF}.csi" "${LOCAL_PHASED_VCF}.tbi"
+    bcftools index -f "${LOCAL_PHASED_VCF}"
+
+    whatshap stats --tsv="${LOCAL_STATS_TSV}" --block-list="${LOCAL_BLOCKS_TSV}" "${LOCAL_PHASED_VCF}"
+    echo "[local phase] Done (inline)."
+}
+
 regenerate_phasing_job() {
     local OUT="${PRJ_DIR}/build_hapl_${SAMPLE_CHILD}.slurm"
+    local SCRIPT_PATH
+    SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    local COMMON_ARGS
+    COMMON_ARGS="$(_chain_common_args)"
 
-    cat << EOF > "${OUT}"
+    cat << SLURM_EOF > "${OUT}"
 #!/bin/bash
 #SBATCH -J build_hapl_${SAMPLE_CHILD}_localphase
 #SBATCH --nodes=1
@@ -885,163 +1120,149 @@ regenerate_phasing_job() {
 #SBATCH -e slurm_output/build_hapl_local_%j.err
 
 set -euo pipefail
-export PS1=\${PS1:-}
-
-module load bcftools
-module load samtools
-module load conda
-conda activate whatshap-env
-
-REF="${REF}"
-SAMPLE="${SAMPLE_CHILD}"
-v="${v}"
-
-ILLUM_VCF="${ILLUM_DIR}/\${SAMPLE}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz"
-CLEAN_BAM="${CLEAN_BAM_PATH}"
-
-REGIONS_BED="\${SAMPLE}_dnmc_plusminus\${v}kb.bed"
-LOCAL_VCF="\${SAMPLE}_dnmc_plusminus\${v}kb.vcf.gz"
-LOCAL_DIPLOID_VCF="\${SAMPLE}_dnmc_plusminus\${v}kb.diploid.vcf.gz"
-LOCAL_PHASED_VCF="\${SAMPLE}.illumVCF_LRbam.phased.\${v}kb.vcf.gz"
-LOCAL_STATS_TSV="\${SAMPLE}.illumVCF_LRbam.stats.\${v}kb.tsv"
-LOCAL_BLOCKS_TSV="\${SAMPLE}.illumVCF_LRbam.blocks.\${v}kb.tsv"
-
-mkdir -p slurm_output
-
-echo "[local phase] Input VCF          : \${ILLUM_VCF}"
-echo "[local phase] Clean BAM          : \${CLEAN_BAM}"
-echo "[local phase] Regions BED        : \${REGIONS_BED}"
-echo "[local phase] Local VCF          : \${LOCAL_VCF}"
-echo "[local phase] Local diploid VCF  : \${LOCAL_DIPLOID_VCF}"
-echo "[local phase] Local phased VCF   : \${LOCAL_PHASED_VCF}"
-
-if [[ ! -f "\${ILLUM_VCF}" ]]; then
-    echo "ERROR: Illumina VCF not found: \${ILLUM_VCF}"
-    exit 1
-fi
-
-if [[ ! -f "\${CLEAN_BAM}" ]]; then
-    echo "ERROR: Clean BAM not found: \${CLEAN_BAM}"
-    exit 1
-fi
-
-if [[ ! -f "\${REGIONS_BED}" ]]; then
-    echo "ERROR: Regions BED not found: \${REGIONS_BED}"
-    exit 1
-fi
-
-if [[ ! -f "\${CLEAN_BAM}.bai" ]]; then
-    echo "[local phase] BAM index not found. Creating index for clean BAM."
-    samtools index "\${CLEAN_BAM}"
-fi
-
-echo "[local phase] Removing stale local outputs"
-rm -f "\${LOCAL_VCF}" "\${LOCAL_VCF}.csi" "\${LOCAL_VCF}.tbi"
-rm -f "\${LOCAL_DIPLOID_VCF}" "\${LOCAL_DIPLOID_VCF}.csi" "\${LOCAL_DIPLOID_VCF}.tbi"
-rm -f "\${LOCAL_PHASED_VCF}" "\${LOCAL_PHASED_VCF}.csi" "\${LOCAL_PHASED_VCF}.tbi"
-rm -f "\${LOCAL_STATS_TSV}" "\${LOCAL_BLOCKS_TSV}"
-
-echo "[local phase] Subsetting Illumina VCF to local regions"
-bcftools view \
-  -R "\${REGIONS_BED}" \
-  -s "\${SAMPLE}" \
-  -Oz -o "\${LOCAL_VCF}" \
-  "\${ILLUM_VCF}"
-
-echo "[local phase] Indexing local VCF"
-bcftools index -f "\${LOCAL_VCF}"
-
-N_LOCAL=\$(bcftools index -n "\${LOCAL_VCF}")
-echo "[local phase] Number of records in local VCF: \${N_LOCAL}"
-
-if [[ "\${N_LOCAL}" -eq 0 ]]; then
-    echo "ERROR: No variants found in local regions: \${LOCAL_VCF}"
-    exit 1
-fi
-
-echo "[local phase] Building diploid-only local VCF to avoid mixed-ploidy crashes"
-bcftools view -Ou "\${LOCAL_VCF}" \
-  | bcftools view -i 'GT="het" || GT="hom" || GT="ref" || GT="alt"' \
-  -Oz -o "\${LOCAL_DIPLOID_VCF}"
-
-echo "[local phase] Indexing diploid-only local VCF"
-bcftools index -f "\${LOCAL_DIPLOID_VCF}"
-
-N_DIPLOID=\$(bcftools index -n "\${LOCAL_DIPLOID_VCF}")
-echo "[local phase] Number of diploid local records retained: \${N_DIPLOID}"
-
-if [[ "\${N_DIPLOID}" -eq 0 ]]; then
-    echo "ERROR: No diploid variants remained after filtering: \${LOCAL_DIPLOID_VCF}"
-    exit 1
-fi
-
-echo "[local phase] Optional sanity check: count records whose GT is not diploid-style"
-bcftools query -f '[%GT\n]' "\${LOCAL_DIPLOID_VCF}" | awk '
-    \$1 !~ /^[.0-9]+[\/|][.0-9]+$/ {bad++}
-    END {print "[local phase] Non-diploid-style GT records remaining:", bad+0}
-'
-
-echo "[local phase] Running whatshap on diploid-only local VCF"
-whatshap phase \
-  --reference "\${REF}" \
-  --ignore-read-groups \
-  -o "\${LOCAL_PHASED_VCF}" \
-  "\${LOCAL_DIPLOID_VCF}" "\${CLEAN_BAM}"
-
-echo "[local phase] Checking phased local VCF is readable"
-bcftools view -h "\${LOCAL_PHASED_VCF}" >/dev/null
-
-echo "[local phase] Rebuilding phased local VCF index"
-rm -f "\${LOCAL_PHASED_VCF}.csi" "\${LOCAL_PHASED_VCF}.tbi"
-bcftools index -f "\${LOCAL_PHASED_VCF}"
-
-echo "--ignore-read-groups"
-whatshap stats \
-  --tsv="\${LOCAL_STATS_TSV}" \
-  --block-list="\${LOCAL_BLOCKS_TSV}" \
-  "\${LOCAL_PHASED_VCF}"
-
-echo "[local phase] Done"
-EOF
+echo "[local phase job] Start: \$(date)"
+bash "${SCRIPT_PATH}" ${COMMON_ARGS} --part 3-inline
+echo "[local phase job] Done: \$(date)"
+SLURM_EOF
 
     chmod +x "${OUT}"
+    mkdir -p slurm_output
     sbatch "${OUT}"
 }
 
+# ===========================================================================
+## CHAIN : Submit Parts 2b -> 3 -> 3b -> 4 as four Slurm jobs chained with
+##         afterok dependencies (mirrors the 6a submit pattern). Each link
+##         re-invokes THIS script with a single --part token, so every step
+##         can STILL be run by hand exactly as before.
+##
+##   Part 3 is run via the internal `3-inline` token so whatshap phasing runs
+##   IN the chained job (not as a nested submit) -- this is what makes the
+##   afterok dependency on 3b correct.
+## ==========================================================================
 
+_chain_common_args() {
+    printf '%s' \
+"--prj-dir ${PRJ_DIR} \
+--sample-child ${SAMPLE_CHILD} \
+--sample-parent ${SAMPLE_PARENT} \
+--source $(basename "${SOURCE_FILE}") \
+--reference ${REF} \
+--cpus ${CPUS} \
+--time ${TIME} \
+--min-rdepth ${MIN_RDEPTH} \
+--max-rdepth ${MAX_RDEPTH} \
+--gt-qual ${GT_QUAL} \
+--nv-quantile ${NV_QUANTILE} \
+--mm-diff-min ${MM_DIFF_MIN} \
+--min-base-qual ${MIN_BASE_QUAL} \
+--min-map-qual ${MIN_MAP_QUAL} \
+--window ${WINDW} \
+--alt-read-count ${ALT_READ_COUNT} \
+--verbose ${VERBOSE} \
+--exclude-chroms ${EXCLUDE_CHROMS} \
+--total-rd-ct-min ${TOTAL_READ_COUNT_MIN} \
+--window_rephase ${WINDOW_REPHASE} \
+--threshold_rephase ${THRESHOLD_REPHASE}"
+}
+
+_chain_write_step_slurm() {
+    local part_token="$1" out_slurm="$2" jobname="$3" walltime="$4" mem="$5"
+    local log_dir="$6" common_args="$7" script_path="$8"
+
+    cat << STEP_EOF > "${out_slurm}"
+#!/bin/bash
+#SBATCH -J ${jobname}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=${CPUS}
+#SBATCH --time=${walltime}
+#SBATCH --mem=${mem}
+#SBATCH -A r00379
+#SBATCH -o ${log_dir}/${jobname}_%j.out
+#SBATCH -e ${log_dir}/${jobname}_%j.err
+
+set -euo pipefail
+echo "[chain:${part_token}] Start: \$(date)"
+bash "${script_path}" ${common_args} --part ${part_token}
+echo "[chain:${part_token}] Done: \$(date)"
+STEP_EOF
+    chmod +x "${out_slurm}"
+}
+
+submit_chain_2b_4_jobs() {
+    echo "[chain] Submitting 2b -> 3 -> 3b -> 4 as an afterok Slurm chain"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local CHAIN_DIR="${PHASED_DIR}/chain_2b_4"
+    local LOG_DIR="${CHAIN_DIR}/logs"
+    local SCRIPT_PATH
+    SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+    mkdir -p "${CHAIN_DIR}" "${LOG_DIR}" slurm_output
+
+    local COMMON_ARGS
+    COMMON_ARGS="$(_chain_common_args)"
+
+    local S2B="${CHAIN_DIR}/run_2b_${SAMPLE_CHILD}.slurm"
+    _chain_write_step_slurm "2b" "${S2B}" "chain2b_${SAMPLE_CHILD}" "${TIME}" "12G" "${LOG_DIR}" "${COMMON_ARGS}" "${SCRIPT_PATH}"
+    local J2B; J2B=$(sbatch --parsable "${S2B}")
+    echo "[chain] Submitted 2b : ${J2B}"
+
+    local S3="${CHAIN_DIR}/run_3_${SAMPLE_CHILD}.slurm"
+    _chain_write_step_slurm "3-inline" "${S3}" "chain3_${SAMPLE_CHILD}" "${TIME}" "12G" "${LOG_DIR}" "${COMMON_ARGS}" "${SCRIPT_PATH}"
+    local J3; J3=$(sbatch --parsable --dependency=afterok:${J2B} "${S3}")
+    echo "[chain] Submitted 3  : ${J3} (after ${J2B})"
+
+    local S3B="${CHAIN_DIR}/run_3b_${SAMPLE_CHILD}.slurm"
+    _chain_write_step_slurm "3b" "${S3B}" "chain3b_${SAMPLE_CHILD}" "${TIME}" "12G" "${LOG_DIR}" "${COMMON_ARGS}" "${SCRIPT_PATH}"
+    local J3B; J3B=$(sbatch --parsable --dependency=afterok:${J3} "${S3B}")
+    echo "[chain] Submitted 3b : ${J3B} (after ${J3})"
+
+    local S4="${CHAIN_DIR}/run_4_${SAMPLE_CHILD}.slurm"
+    _chain_write_step_slurm "4" "${S4}" "chain4_${SAMPLE_CHILD}" "${TIME}" "12G" "${LOG_DIR}" "${COMMON_ARGS}" "${SCRIPT_PATH}"
+    local J4; J4=$(sbatch --parsable --dependency=afterok:${J3B} "${S4}")
+    echo "[chain] Submitted 4  : ${J4} (after ${J3B})"
+
+    echo "[chain] Chain: 2b(${J2B}) -> 3(${J3}) -> 3b(${J3B}) -> 4(${J4})"
+    echo "[chain] Logs in: ${LOG_DIR}"
+}
+
+# ===========================================================================
+## STEP 3b / PART 3b : Re-merge phased child VCF with unphased parent VCF, extract phased SNPs, and recount shared alleles per haplotype block based on new phasing
+## ==========================================================================
 
 remerge_unphased-parent_phased-child_vcfs() {
     echo "Re-merging parent vcf and child vcf"
-    # clean up
     rm -f ./slurm*out
     rm -f ./typescript
 
-    # Make and move phased vcfs to correct directories
-    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
+    local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/
+    local MM_DIR=${PHASED_VCF}/mismatch_analysis
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
-
 
     mkdir -p ${PHASED_VCF}
     mkdir -p ${MERGED_PHASED_VCF}
 
     # move child vcf to correct place
-    ls ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_LRbam* 1>/dev/null 2>&1 && \
-        mv -f ${WORKING_DIR}/${SAMPLE_CHILD}.illumVCF_LRbam* ${PHASED_VCF}/
-    
-    # Index samples before merging
-    bcftools index -f ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz
-    bcftools index -f ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.${v}kb.vcf.gz
+    ls ${MM_DIR}/${SAMPLE_CHILD}.illumVCF_LRbam* 1>/dev/null 2>&1 && \
+        mv -f ${MM_DIR}/${SAMPLE_CHILD}.illumVCF_LRbam* ${PHASED_VCF}/
 
-    # Merge samples into one vcf
+    local PARENT_VCF=${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz
+    local CHILD_VCF=${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.${v}kb.vcf.gz
+
+    # Freshness-aware indexing (rebuilds if missing OR older than the VCF).
+    ensure_fresh_vcf_index "${PARENT_VCF}"
+    ensure_fresh_vcf_index "${CHILD_VCF}"
+
     bcftools merge -m none -Oz \
         -o ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.${v}kb.vcf.gz \
-        ${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz \
-        ${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.${v}kb.vcf.gz
+        "${PARENT_VCF}" \
+        "${CHILD_VCF}"
 
-    bcftools index ${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.${v}kb.vcf.gz #index
+    ensure_fresh_vcf_index "${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.${v}kb.vcf.gz"
     echo "done"
 }
-
 
 reextract_phased_snp() {
     local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
@@ -1063,7 +1284,7 @@ reextract_phased_snp() {
     -Ou \
     | bcftools query \
         -s ${SAMPLE_PARENT},${SAMPLE_CHILD} \
-        -f '%CHROM,%POS,[%PS,][%GT,][%DP,][%GQ,]\n' \
+        -f '%CHROM,%POS,[%PS,][%GT,][%DP,][%GQ,][%AD{0},][%AD{1},]\n' \
         > ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps.tsv
 
  
@@ -1082,6 +1303,7 @@ reextract_phased_snp() {
     echo "See file (below) for extracted snps"
     echo ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps.tsv
     }
+
 
 
 recount_shared_alleles_per_PS_block() {
@@ -1103,7 +1325,7 @@ recount_shared_alleles_per_PS_block() {
   "${SAMPLE_CHILD}" \
   "${GT_QUAL}" \
     0 \
-    0 \
+    "${MM_DIFF_MIN}" \
     "${WINDW}" \
     "${RECOUNT}" \
     "${DNMC_FILE}"
@@ -1114,13 +1336,25 @@ recount_shared_alleles_per_PS_block() {
 }
 
 clean_up(){
-  local SLICE_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/sliced/
-  
+  local MM_DIR=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis
+  local SLICE_DIR=${MM_DIR}/sliced/
+
   mkdir -p ${SLICE_DIR}
 
-  mv ${SAMPLE_CHILD}*plusminus* ${SLICE_DIR}
-  mv ${SAMPLE_CHILD}*LR_validated* ${SLICE_DIR}
-
+  # After the output-path migration, Part 2b / dnmc_readcheck.py writes the
+  # *_plusminus*.bed and *_LR_validated_* files into mismatch_analysis/, not the
+  # current working directory. Move whatever is present from there, and never
+  # fail the job if a class of file is absent (nullglob + guarded mv).
+  shopt -s nullglob
+  local f
+  for f in "${MM_DIR}"/${SAMPLE_CHILD}*plusminus* "${MM_DIR}"/${SAMPLE_CHILD}*LR_validated*; do
+      mv -f "${f}" "${SLICE_DIR}/"
+  done
+  # Also sweep any stragglers still left in CWD by older/manual runs (guarded).
+  for f in ./${SAMPLE_CHILD}*plusminus* ./${SAMPLE_CHILD}*LR_validated*; do
+      mv -f "${f}" "${SLICE_DIR}/"
+  done
+  shopt -u nullglob
 }
 
 
@@ -1132,6 +1366,8 @@ calculate_callable_genome() {
   
   mkdir -p ${POST_ANALYSIS}
   conda activate whatshap-env
+  EXCLUDE_CHROMS="${EXCLUDE_CHROMS}" \
+  
   python "${WORKING_DIR}/src/callable_genome.py" \
   "${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv" \
   "${POST_ANALYSIS}" \
@@ -1214,12 +1450,13 @@ REfilter_dnm_candidates() {
 }
 
 
-REvalidate_dnmc_with_hifi_reads(){
+REvalidate_dnmc_with_long_reads(){
 
   conda activate whatshap-env
-  
+
+  local OUT_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul"
   local HIFI_BAM="${HP_BAM_PATH}"
-  local DNM_BED="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed"
+  local DNM_BED="${OUT_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed"
   local VERBOSE="F"
 
   python "${WORKING_DIR}/src/dnmc_readcheck.py" \
@@ -1231,9 +1468,14 @@ REvalidate_dnmc_with_hifi_reads(){
     "${WINDW}" \
     "${ALT_READ_COUNT}" \
     "${VERBOSE}" \
-    "hetc"
+    "hetc" \
+    "${TOTAL_READ_COUNT_MIN}" \
+    "${OUT_DIR}"
 }
 
+# ===========================================================================
+## STEP 4 : Summarize results, calculate final mutation rate, and generate final report
+## ==========================================================================
 final_summary() {
 
     local WORKING_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
@@ -1244,11 +1486,11 @@ final_summary() {
 
     mkdir -p "${DENUM_DIR}"
 
-    compgen -G "./${SAMPLE_CHILD}*plusminus*" > /dev/null && \
-        mv ./${SAMPLE_CHILD}*plusminus* "${DENUM_DIR}/"
-
-    compgen -G "./${SAMPLE_CHILD}*LR_validated*" > /dev/null && \
-        mv ./${SAMPLE_CHILD}*LR_validated* "${DENUM_DIR}/"
+    # NOTE: dnmc_readcheck.py now writes its outputs directly into
+    # ${DENUM_DIR} (the hetc *_LR_validated_*/*_plusminus* files) and into
+    # mismatch_analysis (the dnmc files), so the old "compgen ... mv from CWD"
+    # cleanup is no longer needed and has been removed. Only the dnmc.20kb.tsv
+    # produced by Part 3b (count_mismatches.py) still needs relocating below.
 
     if [[ -f "${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.20kb.tsv" ]]; then
         mv -f "${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.20kb.tsv" \
@@ -1279,7 +1521,7 @@ final_summary() {
                             -v s="${total_sampled}" \
                             -v c="${accessible_bases}" \
                             'BEGIN { printf "%.6e", (q/s) * c }')
-        
+
     fi
 
     echo "================ Final results summary ================="
@@ -1306,16 +1548,1271 @@ final_summary() {
     echo
 }
 
-final_cleanup(){
-    
-    local WORKING_DIR2=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
-    
-    # Remove all intermediate files
-    rm ${WORKING_DIR2}/${SAMPLE_CHILD}.illumVCF_LRbam*
-    rm ${WORKING_DIR2}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_mismatch*
-    rm ${WORKING_DIR2}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc*
 
+
+# ===========================================================================
+## STEP 5 : Rephase blocks with many mismatches and re-evaluate candidate DNMs
+## ==========================================================================
+
+rephase_blocks_with_mismatches(){
+    module load conda
+    conda activate whatshap-env
+
+    echo "[Rephasing]: Rephasing blocks with many mismatches (potential switch errors)"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local REPHASE_DIR="${PHASED_DIR}/rephased_blocks"
+    local LOCAL_VCF_DIR="${REPHASE_DIR}/local_vcfs"
+    local LOG_DIR="${REPHASE_DIR}/logs"
+
+    local REPHASE_BED="${REPHASE_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_rephase_regions.bed"
+    local FULL_VCF="${ILLUM_DIR}/${SAMPLE_CHILD}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz"
+    local FULL_BAM="${CLEAN_BAM_PATH}"
+
+    mkdir -p "${REPHASE_DIR}"
+    mkdir -p "${LOCAL_VCF_DIR}"
+    mkdir -p "${LOG_DIR}"
+
+    rm -f "${REPHASE_BED}"
+
+    echo "[Rephasing]: Detecting regions to rephase"
+
+    python "${WORKING_DIR}/src/rephase_blocks.py" \
+        --in_block_summary_file "${PHASED_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_mismatch.tsv" \
+        --in_ht_file "${PHASED_DIR}/HTblocks/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv" \
+        --out_dir "${REPHASE_DIR}" \
+        --parent_id "${SAMPLE_PARENT}" \
+        --child_id "${SAMPLE_CHILD}" \
+        --window_size "${WINDOW_REPHASE}" \
+        --threshold "${THRESHOLD_REPHASE}"
+
+    if [[ ! -f "${REPHASE_BED}" ]]; then
+        echo "[Rephasing]: No BED file produced by Python. Skipping local rephasing."
+        return 0
+    fi
+
+    if [[ ! -s "${REPHASE_BED}" ]]; then
+        echo "[Rephasing]: BED file exists but contains no regions. Skipping local rephasing."
+        return 0
+    fi
+
+    echo "[Rephasing]: Regions written to ${REPHASE_BED}"
+    echo "[Rephasing]: Keeping local phased VCFs in ${LOCAL_VCF_DIR}"
+
+    if [[ ! -f "${FULL_VCF}" ]]; then
+        echo "ERROR: child VCF not found: ${FULL_VCF}"
+        return 1
+    fi
+
+    if [[ ! -f "${FULL_BAM}" ]]; then
+        echo "ERROR: clean BAM not found: ${FULL_BAM}"
+        return 1
+    fi
+
+    if [[ ! -f "${FULL_BAM}.bai" ]]; then
+        echo "[Rephasing]: BAM index not found. Creating index."
+        samtools index "${FULL_BAM}"
+    fi
+
+    local TOTAL_REGIONS
+    TOTAL_REGIONS=$(grep -cv '^[[:space:]]*$' "${REPHASE_BED}")
+
+    if [[ -z "${TOTAL_REGIONS}" || "${TOTAL_REGIONS}" -lt 1 ]]; then
+        echo "[Rephasing]: No valid regions found in ${REPHASE_BED}. Skipping local rephasing."
+        return 0
+    fi
+
+    echo "[Rephasing]: Total regions to submit: ${TOTAL_REGIONS}"
+
+    local MAX_REPHASE_JOBS=200
+
+    local N_ARRAY_TASKS
+    if [[ "${TOTAL_REGIONS}" -lt "${MAX_REPHASE_JOBS}" ]]; then
+        N_ARRAY_TASKS="${TOTAL_REGIONS}"
+    else
+        N_ARRAY_TASKS="${MAX_REPHASE_JOBS}"
+    fi
+
+    local ARRAY_SPEC="1-${N_ARRAY_TASKS}"
+
+    echo "[Rephasing]: Total regions: ${TOTAL_REGIONS}"
+    echo "[Rephasing]: Number of Slurm array tasks: ${N_ARRAY_TASKS}"
+    echo "[Rephasing]: Array spec: ${ARRAY_SPEC}"
+
+    local REPHASE_CPUS=1
+    local REPHASE_MEM="8G"
+    local REPHASE_TIME="04:00:00"
+    local REPHASE_ACCOUNT="r00379"
+
+    local CONFIG_FILE="${REPHASE_DIR}/rephase_config.env"
+    local ARRAY_SCRIPT="${REPHASE_DIR}/run_rephase_region_array.sh"
+    local SUMMARY_SCRIPT="${REPHASE_DIR}/summarize_rephase_array.sh"
+
+    echo "[Rephasing]: Removing old success/failure markers"
+    rm -f "${LOCAL_VCF_DIR}"/region_*.success
+    rm -f "${LOCAL_VCF_DIR}"/region_*.failed
+
+    echo "[Rephasing]: Writing config to ${CONFIG_FILE}"
+
+    cat > "${CONFIG_FILE}" <<EOF
+SAMPLE_PARENT="${SAMPLE_PARENT}"
+SAMPLE_CHILD="${SAMPLE_CHILD}"
+REPHASE_BED="${REPHASE_BED}"
+LOCAL_VCF_DIR="${LOCAL_VCF_DIR}"
+FULL_VCF="${FULL_VCF}"
+FULL_BAM="${FULL_BAM}"
+REF="${REF}"
+REPHASE_DIR="${REPHASE_DIR}"
+EOF
+
+    echo "[Rephasing]: Writing Slurm array script to ${ARRAY_SCRIPT}"
+
+    cat > "${ARRAY_SCRIPT}" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="$1"
+N_ARRAY_TASKS="$2"
+
+source "${CONFIG_FILE}"
+
+module load conda
+module load samtools
+module load bcftools
+
+conda activate whatshap-env
+
+TASK_ID="${SLURM_ARRAY_TASK_ID}"
+
+echo "[Rephasing-array]: Task ${TASK_ID} of ${N_ARRAY_TASKS}"
+echo "[Rephasing-array]: BED file: ${REPHASE_BED}"
+
+awk -v task_id="${TASK_ID}" -v n_tasks="${N_ARRAY_TASKS}" '
+    NF >= 3 {
+        row += 1
+        if (((row - 1) % n_tasks) == (task_id - 1)) {
+            print row "\t" $0
+        }
+    }
+' "${REPHASE_BED}" | while IFS=$'\t' read -r REGION_INDEX chrom start end rest; do
+
+    REGION="${chrom}:${start}-${end}"
+
+    echo "============================================================"
+    echo "[Rephasing-array]: Task ${TASK_ID}, BED row ${REGION_INDEX}"
+    echo "[Rephasing-array]: Region ${REGION}"
+
+    REGION_PREFIX="${LOCAL_VCF_DIR}/region_${REGION_INDEX}_${chrom}_${start}_${end}"
+    REGION_VCF="${REGION_PREFIX}.vcf.gz"
+    REGION_BAM="${REGION_PREFIX}.bam"
+    REGION_PHASED_VCF="${REGION_PREFIX}.phased.vcf.gz"
+    REGION_HAPLOTAGGED_BAM="${REGION_PREFIX}.haplotagged.bam"
+    SUCCESS_MARKER="${REGION_PREFIX}.success"
+    FAIL_MARKER="${REGION_PREFIX}.failed"
+
+    rm -f "${SUCCESS_MARKER}" "${FAIL_MARKER}"
+
+    rm -f "${REGION_VCF}" "${REGION_VCF}.tbi" "${REGION_VCF}.csi"
+    rm -f "${REGION_BAM}" "${REGION_BAM}.bai"
+    rm -f "${REGION_PHASED_VCF}" "${REGION_PHASED_VCF}.tbi" "${REGION_PHASED_VCF}.csi"
+    rm -f "${REGION_HAPLOTAGGED_BAM}" "${REGION_HAPLOTAGGED_BAM}.bai"
+
+    echo "[Rephasing-array]: Extracting region from original child VCF"
+
+    if ! bcftools view \
+        -r "${REGION}" \
+        -s "${SAMPLE_CHILD}" \
+        -Oz \
+        -o "${REGION_VCF}" \
+        "${FULL_VCF}"
+    then
+        echo "[Rephasing-array]: FAILED bcftools view for ${REGION}"
+        touch "${FAIL_MARKER}"
+        continue
+    fi
+
+    if ! bcftools index -f "${REGION_VCF}"; then
+        echo "[Rephasing-array]: FAILED bcftools index for ${REGION_VCF}"
+        touch "${FAIL_MARKER}"
+        continue
+    fi
+
+    NVAR=$(bcftools view -H "${REGION_VCF}" | wc -l)
+
+    if [[ "${NVAR}" -eq 0 ]]; then
+        echo "[Rephasing-array]: No variants in ${REGION}; skipping."
+        touch "${SUCCESS_MARKER}"
+        continue
+    fi
+
+    echo "[Rephasing-array]: Extracting reads overlapping region"
+
+    if ! samtools view \
+        -b \
+        "${FULL_BAM}" \
+        "${REGION}" \
+        -o "${REGION_BAM}"
+    then
+        echo "[Rephasing-array]: FAILED samtools view for ${REGION}"
+        touch "${FAIL_MARKER}"
+        continue
+    fi
+
+    if ! samtools index "${REGION_BAM}"; then
+        echo "[Rephasing-array]: FAILED samtools index for ${REGION_BAM}"
+        touch "${FAIL_MARKER}"
+        continue
+    fi
+
+    echo "[Rephasing-array]: Running whatshap phase"
+
+    if ! whatshap phase \
+        --reference "${REF}" \
+        --ignore-read-groups \
+        --sample "${SAMPLE_CHILD}" \
+        -o "${REGION_PHASED_VCF}" \
+        "${REGION_VCF}" \
+        "${REGION_BAM}"
+    then
+        echo "[Rephasing-array]: FAILED whatshap phase for ${REGION}"
+        touch "${FAIL_MARKER}"
+        continue
+    fi
+
+    if ! bcftools index -f "${REGION_PHASED_VCF}"; then
+        echo "[Rephasing-array]: FAILED bcftools index for ${REGION_PHASED_VCF}"
+        touch "${FAIL_MARKER}"
+        continue
+    fi
+
+    echo "[Rephasing-array]: Running whatshap haplotag"
+
+    if ! whatshap haplotag \
+        --reference "${REF}" \
+        --ignore-read-groups \
+        --sample "${SAMPLE_CHILD}" \
+        -o "${REGION_HAPLOTAGGED_BAM}" \
+        "${REGION_PHASED_VCF}" \
+        "${REGION_BAM}"
+    then
+        echo "[Rephasing-array]: FAILED whatshap haplotag for ${REGION}"
+        touch "${FAIL_MARKER}"
+        continue
+    fi
+
+    if ! samtools index "${REGION_HAPLOTAGGED_BAM}"; then
+        echo "[Rephasing-array]: FAILED samtools index for ${REGION_HAPLOTAGGED_BAM}"
+        touch "${FAIL_MARKER}"
+        continue
+    fi
+
+    touch "${SUCCESS_MARKER}"
+
+    echo "[Rephasing-array]: Finished BED row ${REGION_INDEX}: ${REGION}"
+
+done
+
+echo "[Rephasing-array]: Task ${TASK_ID} completed all assigned regions."
+EOS
+
+    chmod +x "${ARRAY_SCRIPT}"
+
+    echo "[Rephasing]: Submitting Slurm array with ${N_ARRAY_TASKS} total tasks"
+
+    local ARRAY_JOB_ID
+    ARRAY_JOB_ID=$(sbatch \
+        --parsable \
+        --job-name="rephase_${SAMPLE_CHILD}" \
+        --account="${REPHASE_ACCOUNT}" \
+        --nodes=1 \
+        --ntasks=1 \
+        --array="${ARRAY_SPEC}" \
+        --cpus-per-task="${REPHASE_CPUS}" \
+        --mem="${REPHASE_MEM}" \
+        --time="${REPHASE_TIME}" \
+        --output="${LOG_DIR}/rephase_%A_%a.out" \
+        --error="${LOG_DIR}/rephase_%A_%a.err" \
+        "${ARRAY_SCRIPT}" "${CONFIG_FILE}" "${N_ARRAY_TASKS}")
+
+    echo "[Rephasing]: Submitted array job: ${ARRAY_JOB_ID}"
+
+    cat > "${SUMMARY_SCRIPT}" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="$1"
+TOTAL_REGIONS="$2"
+
+source "${CONFIG_FILE}"
+
+SUCCESS=$(find "${LOCAL_VCF_DIR}" -name 'region_*.success' | wc -l)
+FAILED=$(find "${LOCAL_VCF_DIR}" -name 'region_*.failed' | wc -l)
+OBSERVED=$((SUCCESS + FAILED))
+MISSING=$((TOTAL_REGIONS - OBSERVED))
+
+echo "[Rephasing-summary]: Done"
+echo "[Rephasing-summary]: Regions attempted: ${TOTAL_REGIONS}"
+echo "[Rephasing-summary]: Regions successfully rephased or skipped-empty: ${SUCCESS}"
+echo "[Rephasing-summary]: Regions failed: ${FAILED}"
+echo "[Rephasing-summary]: Regions missing marker: ${MISSING}"
+echo "[Rephasing-summary]: Local phased VCFs kept in: ${LOCAL_VCF_DIR}"
+
+SUMMARY_FILE="${REPHASE_DIR}/rephase_summary.txt"
+
+{
+    echo "Regions attempted: ${TOTAL_REGIONS}"
+    echo "Regions successfully rephased or skipped-empty: ${SUCCESS}"
+    echo "Regions failed: ${FAILED}"
+    echo "Regions missing marker: ${MISSING}"
+    echo "Local phased VCFs: ${LOCAL_VCF_DIR}"
+} > "${SUMMARY_FILE}"
+
+echo "[Rephasing-summary]: Wrote ${SUMMARY_FILE}"
+
+if [[ "${MISSING}" -ne 0 ]]; then
+    echo "[Rephasing-summary]: WARNING: Some regions did not produce success or failure markers."
+fi
+EOS
+
+    chmod +x "${SUMMARY_SCRIPT}"
+
+    local SUMMARY_JOB_ID
+    SUMMARY_JOB_ID=$(sbatch \
+        --parsable \
+        --dependency=afterany:${ARRAY_JOB_ID} \
+        --job-name="rephase_summary_${SAMPLE_CHILD}" \
+        --account="${REPHASE_ACCOUNT}" \
+        --nodes=1 \
+        --ntasks=1 \
+        --cpus-per-task=1 \
+        --mem="2G" \
+        --time="00:35:00" \
+        --output="${LOG_DIR}/rephase_summary_%j.out" \
+        --error="${LOG_DIR}/rephase_summary_%j.err" \
+        "${SUMMARY_SCRIPT}" "${CONFIG_FILE}" "${TOTAL_REGIONS}")
+
+    echo "[Rephasing]: Submitted summary job: ${SUMMARY_JOB_ID}"
+    echo "[Rephasing]: Logs will be written to: ${LOG_DIR}"
 }
+
+
+
+
+# ===========================================================================
+## STEP 6 : Merge rephased child VCF with unphased parent VCF, extract phased SNPs, recount mismatches
+## ==========================================================================
+
+run_rephase_merge() {
+    echo "[6a-rephase] Merging parent VCF with locally rephased child VCF"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local REPHASE_DIR="${PHASED_DIR}/rephased_blocks"
+    local LOCAL_VCF_DIR="${REPHASE_DIR}/local_vcfs"
+    local MERGED_DIR="${REPHASE_DIR}/merged"
+
+    mkdir -p "${MERGED_DIR}"
+
+    module load bcftools
+
+    # Part 6a depends on the locally rephased VCFs produced by Part 5
+    # (rephase_blocks_with_mismatches), which writes into local_vcfs/ via a
+    # Slurm array. If that directory is missing, Part 5 has not been run, was
+    # skipped (no block crossed --threshold_rephase), or its array jobs have
+    # not finished yet.
+    if [[ ! -d "${LOCAL_VCF_DIR}" ]]; then
+        echo "ERROR: ${LOCAL_VCF_DIR} does not exist."
+        echo "       Part 6a needs the rephased VCFs produced by Part 5."
+        echo "       Run Part 5 first:  ./main.sh --part 5 ... (same --prj-dir/--sample-*)"
+        echo "       and wait for its Slurm array (rephase_${SAMPLE_CHILD}) + summary job to finish."
+        echo "       Check ${REPHASE_DIR}/rephase_summary.txt for completion status."
+        return 1
+    fi
+
+    ## Remove any files that's not phased or haplotagged
+    find "${LOCAL_VCF_DIR}" -maxdepth 1 -type f ! -name "*phased*" ! -name "*haplotagged*" -delete
+
+    # If Part 5 ran but produced no phased VCFs (e.g. all regions empty/failed),
+    # there is nothing to merge. Fail clearly rather than silently producing
+    # an empty rephase candidate set downstream.
+    shopt -s nullglob
+    local _have_phased=("${LOCAL_VCF_DIR}"/*phased.vcf.gz)
+    shopt -u nullglob
+    if [[ "${#_have_phased[@]}" -eq 0 ]]; then
+        echo "ERROR: no *phased.vcf.gz files in ${LOCAL_VCF_DIR}."
+        echo "       Part 5 may still be running, or no blocks exceeded --threshold_rephase,"
+        echo "       or all array tasks failed. See ${REPHASE_DIR}/rephase_summary.txt"
+        echo "       and ${REPHASE_DIR}/logs/ for details."
+        return 1
+    fi
+
+    ## For all phased region vcfs
+    shopt -s nullglob
+
+    for phased_vcf in "${LOCAL_VCF_DIR}"/*phased.vcf.gz; do
+
+        region_prefix=$(basename "${phased_vcf}" .phased.vcf.gz)
+
+        merged_vcf="${MERGED_DIR}/${SAMPLE_CHILD}_${SAMPLE_PARENT}_${region_prefix}.rephased.merged.vcf.gz"
+
+        parent_vcf="${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz"
+
+        parent_region="${MERGED_DIR}/${region_prefix}.parent.region.vcf.gz"
+
+        echo "Processing ${region_prefix}"
+
+        # detect region from child phased VCF
+        region=$(bcftools query -f '%CHROM\t%POS\n' "${phased_vcf}" \
+            | awk '
+                NR==1 {chr=$1; min=$2; max=$2}
+                {
+                    if($2<min) min=$2
+                    if($2>max) max=$2
+                }
+                END {print chr ":" min "-" max}
+            ')
+
+        echo "Region wanted in the child's rephased vcf = ${region}"
+
+        # subset parent only there
+        echo "Subsetting this region from the parent's vcf" 
+        bcftools view \
+            -r "${region}" \
+            -Oz \
+            -o "${parent_region}" \
+            "${parent_vcf}"
+
+        bcftools index -f "${parent_region}"
+
+        # merge regional files
+        echo "Merging the subsetted region in the child and the parent vcfs"
+        bcftools merge -m none -Oz \
+            -o "${merged_vcf}" \
+            "${parent_region}" \
+            "${phased_vcf}"
+
+        bcftools index -f "${merged_vcf}"
+
+        # Remove regional parent VCF to save space
+        rm -f "${parent_region}" "${parent_region}.csi" 
+        echo
+    done
+    echo "[6a-rephase] Done merging. Merged VCFs in: ${MERGED_DIR}"
+}
+
+
+# ===========================================================================
+## STEP 6a (Slurm): submit the remerge as ONE job (8h), then chain the rest
+##   as a dependent job (afterok). Both jobs re-invoke THIS script with
+##   internal stage tokens so the function logic is single-sourced.
+## ==========================================================================
+
+# Reconstruct the exact argument set needed to re-invoke main.sh inside Slurm.
+# Only the flags that affect 6a/6b/6d behaviour are forwarded.
+_rephase_common_args() {
+    printf '%s' \
+"--prj-dir ${PRJ_DIR} \
+--sample-child ${SAMPLE_CHILD} \
+--sample-parent ${SAMPLE_PARENT} \
+--source $(basename "${SOURCE_FILE}") \
+--min-rdepth ${MIN_RDEPTH} \
+--max-rdepth ${MAX_RDEPTH} \
+--gt-qual ${GT_QUAL} \
+--nv-quantile ${NV_QUANTILE} \
+--mm-diff-min ${MM_DIFF_MIN} \
+--min-base-qual ${MIN_BASE_QUAL} \
+--min-map-qual ${MIN_MAP_QUAL} \
+--window ${WINDW} \
+--alt-read-count ${ALT_READ_COUNT} \
+--verbose ${VERBOSE} \
+--window_rephase ${WINDOW_REPHASE} \
+--threshold_rephase ${THRESHOLD_REPHASE}"
+}
+
+submit_rephase_6a_jobs() {
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local REPHASE_DIR="${PHASED_DIR}/rephased_blocks"
+    local LOCAL_VCF_DIR="${REPHASE_DIR}/local_vcfs"
+    local LOG_DIR="${REPHASE_DIR}/logs"
+    local SCRIPT_PATH
+    SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+    mkdir -p "${LOG_DIR}"
+    mkdir -p slurm_output
+
+    # --- Preflight: same checks the merge loop would do, but fail fast here ---
+    if [[ ! -d "${LOCAL_VCF_DIR}" ]]; then
+        echo "ERROR: ${LOCAL_VCF_DIR} does not exist."
+        echo "       Part 6a needs the rephased VCFs produced by Part 5."
+        echo "       Run Part 5 first and let its Slurm array + summary job finish."
+        return 1
+    fi
+
+    shopt -s nullglob
+    local _have_phased=("${LOCAL_VCF_DIR}"/*phased.vcf.gz)
+    shopt -u nullglob
+    if [[ "${#_have_phased[@]}" -eq 0 ]]; then
+        echo "ERROR: no *phased.vcf.gz files in ${LOCAL_VCF_DIR}."
+        echo "       Part 5 may still be running, or produced no rephased regions."
+        echo "       See ${REPHASE_DIR}/rephase_summary.txt"
+        return 1
+    fi
+    echo "[6a-submit] Found ${#_have_phased[@]} rephased region VCFs to merge."
+
+    local COMMON_ARGS
+    COMMON_ARGS="$(_rephase_common_args)"
+
+    # ---------------- Job 1: the merge (8h walltime) ----------------
+    local MERGE_SLURM="${REPHASE_DIR}/run_6a_merge_${SAMPLE_CHILD}.slurm"
+
+    cat << EOF > "${MERGE_SLURM}"
+#!/bin/bash
+#SBATCH -J merge6a_${SAMPLE_CHILD}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --time=08:00:00
+#SBATCH --mem=8G
+#SBATCH -A r00379
+#SBATCH -o ${LOG_DIR}/merge6a_%j.out
+#SBATCH -e ${LOG_DIR}/merge6a_%j.err
+
+set -euo pipefail
+echo "[6a-merge-job] Host: \$(hostname)  Start: \$(date)"
+bash "${SCRIPT_PATH}" ${COMMON_ARGS} --part 6a-merge
+echo "[6a-merge-job] Done: \$(date)"
+EOF
+
+    chmod +x "${MERGE_SLURM}"
+
+    local MERGE_JOBID
+    MERGE_JOBID=$(sbatch --parsable "${MERGE_SLURM}")
+    echo "[6a-submit] Submitted MERGE job: ${MERGE_JOBID}"
+
+    # ---------------- Job 2: the rest (depends on merge OK) ----------------
+    local REST_SLURM="${REPHASE_DIR}/run_6a_rest_${SAMPLE_CHILD}.slurm"
+
+    cat << EOF > "${REST_SLURM}"
+#!/bin/bash
+#SBATCH -J rest6a_${SAMPLE_CHILD}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --time=08:00:00
+#SBATCH --mem=12G
+#SBATCH -A r00379
+#SBATCH -o ${LOG_DIR}/rest6a_%j.out
+#SBATCH -e ${LOG_DIR}/rest6a_%j.err
+
+set -euo pipefail
+echo "[6a-rest-job] Host: \$(hostname)  Start: \$(date)"
+bash "${SCRIPT_PATH}" ${COMMON_ARGS} --part 6a-rest
+echo "[6a-rest-job] Done: \$(date)"
+EOF
+
+    chmod +x "${REST_SLURM}"
+
+    local REST_JOBID
+    REST_JOBID=$(sbatch --parsable --dependency=afterok:${MERGE_JOBID} "${REST_SLURM}")
+    echo "[6a-submit] Submitted REST job: ${REST_JOBID} (runs after ${MERGE_JOBID} succeeds)"
+
+    echo "[6a-submit] Merge script : ${MERGE_SLURM}"
+    echo "[6a-submit] Rest script  : ${REST_SLURM}"
+    echo "[6a-submit] Logs         : ${LOG_DIR}"
+    echo "[6a-submit] Monitor with : squeue -u \$USER"
+}
+
+extract_rephase_phased_snp() {
+    echo "[6a-rephase] Extracting phased SNPs from ALL rephased merged VCFs"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local REPHASE_DIR="${PHASED_DIR}/rephased_blocks"
+    local MERGED_DIR="${REPHASE_DIR}/merged"
+    local HT_DIR="${PHASED_DIR}/HTblocks"
+
+    local OUT_TSV="${HT_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps${REPHASE_SUFFIX}.tsv"
+    local FIXED_TSV="${HT_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps${REPHASE_SUFFIX}_fixed.tsv"
+
+    mkdir -p "${HT_DIR}"
+
+    # clear previous file
+    : > "${OUT_TSV}"
+
+    shopt -s nullglob
+    local found=0
+
+    for merged_vcf in "${MERGED_DIR}"/*.vcf.gz; do
+        found=1
+        echo "[6a-rephase] Processing $(basename "${merged_vcf}")"
+
+        bcftools view "${merged_vcf}" \
+            -i 'TYPE="snp" && N_ALT=1 && GT[0]!="mis" && GT[1]!="mis" && FMT/PS[1]!="."' \
+            -Ou \
+        | bcftools query \
+            -s "${SAMPLE_PARENT},${SAMPLE_CHILD}" \
+            -f '%CHROM,%POS,[%PS,][%GT,][%DP,][%GQ,][%AD{0},][%AD{1},]\n' \
+            >> "${OUT_TSV}"
+    done
+    shopt -u nullglob
+
+    if [[ "${found}" -eq 0 ]]; then
+        echo "[6a-rephase] No merged VCF files found in ${MERGED_DIR}"
+        return 1
+    fi
+
+    if [[ ! -s "${OUT_TSV}" ]]; then
+        echo "[6a-rephase] No phased SNPs found"
+        return 1
+    fi
+
+    # Sort + unique by chromosome/position
+    sort -t',' -k1,1 -k2,2n -u "${OUT_TSV}" > "${OUT_TSV}.tmp"
+    mv "${OUT_TSV}.tmp" "${OUT_TSV}"
+
+    conda activate whatshap-env
+
+    python "${WORKING_DIR}/src/fix_PhaseSet.py" \
+        "${OUT_TSV}" \
+        "${FIXED_TSV}"
+
+    mv "${FIXED_TSV}" "${OUT_TSV}"
+
+    echo "[6a-rephase] Final concatenated output:"
+    echo "${OUT_TSV}"
+}
+
+count_rephase_mismatches() {
+    echo "[6a-rephase] Counting mismatches using rephased blocks"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local HT_DIR="${PHASED_DIR}/HTblocks"
+    local MISMATCH_ANALYSIS_DIR="${PHASED_DIR}/mismatch_analysis"
+
+    
+    conda activate whatshap-env
+
+    python "${WORKING_DIR}/src/count_rephase_mismatches.py" \
+    "${HT_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps${REPHASE_SUFFIX}.tsv" \
+    "${MISMATCH_ANALYSIS_DIR}" \
+    "${MIN_RDEPTH}" \
+    "${MAX_RDEPTH}" \
+    "${SAMPLE_PARENT}" \
+    "${SAMPLE_CHILD}" \
+    "${GT_QUAL}" \
+    "${NV_QUANTILE}" \
+    "${MM_DIFF_MIN}" 
+
+
+    echo "[6a-rephase] See output in file ${MISMATCH_ANALYSIS_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_mismatch${REPHASE_SUFFIX}.tsv"
+    echo "[6a-rephase] Done counting mismatches with rephased blocks"
+}
+
+
+filter_rephase_dnm_candidates() {
+    echo "[6a-rephase] Filtering rephased DNM candidates"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local MISMATCH_ANALYSIS_DIR="${PHASED_DIR}/mismatch_analysis"
+    local REPHASED_MERGED_DIR="${PHASED_DIR}/rephased_blocks/merged"
+
+    local IN_BED="${MISMATCH_ANALYSIS_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.bed"
+    local OUT_TSV="${MISMATCH_ANALYSIS_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.tsv"
+    local OUT_BED="${MISMATCH_ANALYSIS_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.filt.bed"
+
+    # Clear outputs before appending
+    : > "${OUT_TSV}"
+    : > "${OUT_BED}"
+
+    # Hardened filter expression
+    # [0] = parent (must be hom-ref, zero alt reads, passing GQ+DP)
+    # [1] = child  (must be phased het, passing GQ+DP, alt reads present)
+    local filter_expr="
+    (FMT/GT[1]==\"0|1\" || FMT/GT[1]==\"1|0\") &&
+    FMT/GT[0]==\"0/0\" &&
+    FMT/GT[0]!=\"1/1\" &&
+    FMT/GT[0]!=\"0/1\" &&
+    FMT/GT[0]!=\"1/0\" &&
+    FMT/DP[0]>=${MIN_RDEPTH} && FMT/DP[0]<=${MAX_RDEPTH} &&
+    FMT/DP[1]>=${MIN_RDEPTH} && FMT/DP[1]<=${MAX_RDEPTH} &&
+    FMT/GQ[0]>=${GT_QUAL} &&
+    FMT/GQ[1]>=${GT_QUAL} &&
+    FMT/AD[1:1]>5 &&
+    FMT/AD[1:0]>5 &&
+    FMT/AD[0:1]==0
+    "
+
+    shopt -s nullglob
+    local found=0
+    local header_written=0
+
+    for merged_vcf in "${REPHASED_MERGED_DIR}"/*.vcf.gz; do
+        found=1
+        echo "[6a-rephase] Processing $(basename "${merged_vcf}")"
+
+        local tmp_vcf="${OUT_TSV%.tsv}.temp.vcf.gz"
+
+        bcftools view \
+            -R "${IN_BED}" \
+            -m2 -M2 -v snps \
+            -Oz \
+            -o "${tmp_vcf}" \
+            "${merged_vcf}"
+
+        bcftools index -f "${tmp_vcf}"
+
+        # Verify sample order: parent must be column 0
+        local col0
+        col0=$(bcftools query -l "${tmp_vcf}" | sed -n '1p')
+        if [[ "${col0}" != "${SAMPLE_PARENT}" ]]; then
+            echo "ERROR: expected ${SAMPLE_PARENT} as sample[0] in ${merged_vcf}, got ${col0}. Skipping."
+            rm -f "${tmp_vcf}" "${tmp_vcf}.csi"
+            continue
+        fi
+
+        # Write the bcftools -H header exactly ONCE (from the first valid VCF),
+        # then append data rows WITHOUT -H so the header is not repeated per region.
+        if [[ "${header_written}" -eq 0 ]]; then
+            bcftools view "${tmp_vcf}" -i "${filter_expr}" \
+            | bcftools query -H \
+                -f '%CHROM\t%POS\t[%GT\t][%DP\t][%GQ\t][%AD\t]\n' \
+            | head -n 1 \
+            > "${OUT_TSV}"
+            header_written=1
+        fi
+
+        # Data rows only (no -H): bcftools query without -H emits no header line.
+        bcftools view "${tmp_vcf}" -i "${filter_expr}" \
+        | bcftools query \
+            -f '%CHROM\t%POS\t[%GT\t][%DP\t][%GQ\t][%AD\t]\n' \
+            >> "${OUT_TSV}"
+
+        bcftools view "${tmp_vcf}" -i "${filter_expr}" \
+        | bcftools query -f '%CHROM\t%POS\n' \
+        | awk 'BEGIN{OFS="\t"} {print $1, $2-1, $2}' \
+            >> "${OUT_BED}"
+
+        rm -f "${tmp_vcf}" "${tmp_vcf}.csi"
+    done
+    shopt -u nullglob
+
+    if [[ "${found}" -eq 0 ]]; then
+        echo "[6a-rephase] WARNING: No merged VCFs found in ${REPHASED_MERGED_DIR}"
+        return 1
+    fi
+
+    # De-duplicate and sort the BED
+    if [[ -s "${OUT_BED}" ]]; then
+        sort -k1,1 -k2,2n -u "${OUT_BED}" > "${OUT_BED}.tmp"
+        mv "${OUT_BED}.tmp" "${OUT_BED}"
+    fi
+
+    echo "[6a-rephase] Input BED  : ${IN_BED}"
+    echo "[6a-rephase] Output TSV : ${OUT_TSV}"
+    echo "[6a-rephase] Output BED : ${OUT_BED}"
+    echo "[6a-rephase] Candidate count: $(wc -l < "${OUT_BED}")"
+}
+
+
+validate_rephase_dnmc_with_parent_bam() {
+    echo "[6a-parent-check] Validating rephased DNM candidates against parent Illumina BAM"
+
+    conda activate whatshap-env
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local MISMATCH_ANALYSIS_DIR="${PHASED_DIR}/mismatch_analysis"
+    local MERGED_PHASED_VCF="${PHASED_DIR}/merged"
+
+    # The rephase candidate BED that filter_rephase_dnm_candidates produced and
+    # that the HiFi validation will consume next. We filter it IN PLACE, exactly
+    # as the original 2b validate_dnmc_with_parent_bam does for set A.
+    local IN_BED="${MISMATCH_ANALYSIS_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.filt.bed"
+    local OUT_BED="${MISMATCH_ANALYSIS_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.parentBAM.bed"
+
+    # parent_readcheck.py looks up REF/ALT per site via vcf.fetch(), so the VCF
+    # must contain every candidate position. The per-region rephase merged VCFs
+    # do NOT collectively guarantee that in one file, but the whole-genome 2b
+    # merged VCF does, and the parent's REF/ALT at any site are identical there
+    # (rephasing only changed the CHILD's phasing, not the parent record). So we
+    # use the canonical 2b merged VCF.
+    local MERGED_VCF="${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz"
+    local PARENT_BAM="${ORIG_BAM_PARENT_PATH}"
+    local MAX_PARENT_ALT=1
+
+    if [[ ! -s "${IN_BED}" ]]; then
+        echo "[6a-parent-check] No candidates in ${IN_BED}; nothing to do"
+        return 0
+    fi
+
+    if [[ ! -f "${MERGED_VCF}" ]]; then
+        echo "[6a-parent-check] WARNING: 2b merged VCF not found at ${MERGED_VCF}"
+        echo "[6a-parent-check] Skipping parent-BAM validation (run Parts 2b-4 first)."
+        return 0
+    fi
+
+    if [[ ! -f "${PARENT_BAM}" ]]; then
+        echo "[6a-parent-check] WARNING: parent BAM not found at ${PARENT_BAM}"
+        echo "[6a-parent-check] Skipping parent-BAM validation (results may include FN-parent DNMs)"
+        return 0
+    fi
+
+    # Make sure the parent BAM is indexed
+    if [[ ! -f "${PARENT_BAM}.bai" && ! -f "${PARENT_BAM%.bam}.bai" ]]; then
+        echo "[6a-parent-check] Indexing parent BAM"
+        samtools index "${PARENT_BAM}"
+    fi
+
+    local N_BEFORE
+    N_BEFORE=$(grep -cv '^#' "${IN_BED}" || true)
+
+    python "${WORKING_DIR}/src/parent_readcheck.py" \
+        "${SAMPLE_PARENT}" \
+        "${PARENT_BAM}" \
+        "${MERGED_VCF}" \
+        "${IN_BED}" \
+        "${OUT_BED}" \
+        "${MIN_BASE_QUAL}" \
+        "${MIN_MAP_QUAL}" \
+        "${MAX_PARENT_ALT}" \
+        "${MISMATCH_ANALYSIS_DIR}"
+
+    # Swap filtered BED into the canonical location (so HiFi validation sees it)
+    mv "${OUT_BED}" "${IN_BED}"
+
+    local N_AFTER
+    N_AFTER=$(grep -cv '^#' "${IN_BED}" || true)
+
+    echo "[6a-parent-check] Candidates before: ${N_BEFORE}"
+    echo "[6a-parent-check] Candidates after : ${N_AFTER}"
+    echo "[6a-parent-check] Removed by parent-BAM evidence: $((N_BEFORE - N_AFTER))"
+}
+
+
+validate_rephase_dnmc_with_hifi_reads() {
+    echo "[6a-rephase] Validating rephased DNMC candidates with HiFi reads"
+
+    conda activate whatshap-env
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local REPHASE_ANALYSIS_DIR="${PHASED_DIR}/mismatch_analysis"
+
+    # Use the bcftools-filtered output rather than the raw Python output
+    local DNM_BED="${REPHASE_ANALYSIS_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.filt.bed"
+
+    # Distinct label avoids output-file collisions with the set-A 'dnmc' run
+    local LR_LABEL="dnmc${REPHASE_SUFFIX}"
+
+    # dnmc_readcheck.py now writes directly into REPHASE_ANALYSIS_DIR (arg 11),
+    # so there is no CWD-to-dir mv afterward.
+    python "${WORKING_DIR}/src/dnmc_readcheck.py" \
+        "${SAMPLE_CHILD}" \
+        "${HP_BAM_PATH}" \
+        "${DNM_BED}" \
+        "${MIN_BASE_QUAL}" \
+        "${MIN_MAP_QUAL}" \
+        "${WINDW}" \
+        "${ALT_READ_COUNT}" \
+        "T" \
+        "${LR_LABEL}" \
+        "${TOTAL_READ_COUNT_MIN}" \
+        "${REPHASE_ANALYSIS_DIR}"
+
+    # ----------------------------------------------------------------------
+    # Make the LR-validated set the CANONICAL set-B candidate list, mirroring
+    # how set A treats LR validation as a hard filter on candidates.
+    #
+    # dnmc_readcheck.py wrote ${CHILD}_LR_validated_${LR_LABEL}.bed directly
+    # into REPHASE_ANALYSIS_DIR. We intersect the bcftools-filtered candidate
+    # TSV against the LR-validated positions so that
+    #   ${PARENT}_${CHILD}_dnmc_rephase.tsv
+    # contains ONLY LR-passing candidates (header preserved).
+    # ----------------------------------------------------------------------
+    local LR_VALID_BED="${REPHASE_ANALYSIS_DIR}/${SAMPLE_CHILD}_LR_validated_${LR_LABEL}.bed"
+    local FILT_TSV="${REPHASE_ANALYSIS_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.tsv"
+
+    if [[ -s "${LR_VALID_BED}" && -s "${FILT_TSV}" ]]; then
+        echo "[6a-rephase] Intersecting bcftools-filtered candidates with LR-validated positions"
+
+        local TMP_TSV="${FILT_TSV%.tsv}.lrvalidated.tsv"
+
+        awk '
+            FNR==NR { v[$1":"$3]=1; next }
+            FNR==1 { print; next }
+            $1 ~ /^#/ { next }
+            {
+                key=$1":"$2
+                if (key in v) print
+            }
+        ' "${LR_VALID_BED}" "${FILT_TSV}" > "${TMP_TSV}"
+
+        mv "${TMP_TSV}" "${FILT_TSV}"
+
+        echo "[6a-rephase] Canonical LR-validated set-B candidates: ${FILT_TSV}"
+        echo "[6a-rephase] Set-B candidate count (LR-validated): $(awk 'NR>1 && $1 !~ /^#/ && NF>0' "${FILT_TSV}" | wc -l)"
+    else
+        echo "[6a-rephase] No LR-validated candidates: setting set B to ZERO."
+        echo "[6a-rephase]   LR BED : ${LR_VALID_BED}"
+        echo "[6a-rephase]   TSV    : ${FILT_TSV}"
+
+        if [[ -s "${FILT_TSV}" ]]; then
+            head -n 1 "${FILT_TSV}" > "${FILT_TSV}.tmp"
+            mv "${FILT_TSV}.tmp" "${FILT_TSV}"
+        else
+            printf '# [1]CHROM\t[2]POS\n' > "${FILT_TSV}"
+        fi
+        echo "[6a-rephase] Set-B candidate count (LR-validated): 0"
+    fi
+}
+
+# ===========================================================================
+## STEP 6b : INDEPENDENT callable genome over the rephased blocks (gives C_B)
+##           Mirrors Part 4 (calculate_callable_genome + REfilter + REvalidate)
+##           but points at the rephased PS file / rephased merged VCFs, writing
+##           to a SEPARATE denum dir so set A's callable_genome.txt is untouched.
+## ==========================================================================
+
+calculate_callable_genome_rephase() {
+    echo "[6b-rephase] Computing INDEPENDENT callable genome over rephased blocks"
+
+    conda activate whatshap-env
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local HT_DIR="${PHASED_DIR}/HTblocks"
+    local DENUM_DIR="${PHASED_DIR}/mismatch_analysis${REPHASE_SUFFIX}/denum_calcul"
+
+    # Rephased PS file produced by extract_rephase_phased_snp (Part 6a)
+    local REPHASE_PS="${HT_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps${REPHASE_SUFFIX}.tsv"
+
+    if [[ ! -s "${REPHASE_PS}" ]]; then
+        echo "ERROR: rephased PS file not found or empty: ${REPHASE_PS}"
+        return 1
+    fi
+
+    mkdir -p "${DENUM_DIR}"
+
+    EXCLUDE_CHROMS="${EXCLUDE_CHROMS}" \
+    # Sample callable SNPs from the rephased blocks (same args as Part 4)
+    python "${WORKING_DIR}/src/callable_genome.py" \
+        "${REPHASE_PS}" \
+        "${DENUM_DIR}" \
+        "${MIN_RDEPTH}" \
+        "${MAX_RDEPTH}" \
+        "${SAMPLE_PARENT}" \
+        "${SAMPLE_CHILD}" \
+        "${GT_QUAL}" \
+        "${NV_QUANTILE}" \
+        "${MM_DIFF_MIN}" \
+        0 "${NOTRECOUNT}"
+
+    echo "[6b-rephase] Independent callable-genome outputs in: ${DENUM_DIR}"
+}
+
+
+REfilter_dnm_candidates_rephase() {
+    echo "[6b-rephase] Re-filtering sampled SNPs over rephased merged VCFs (for C_B)"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local DENUM_DIR="${PHASED_DIR}/mismatch_analysis${REPHASE_SUFFIX}/denum_calcul"
+    local REPHASED_MERGED_DIR="${PHASED_DIR}/rephased_blocks/merged"
+
+    local BED="${DENUM_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed"
+    local OUT_TSV="${DENUM_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.tsv"
+    local OUT_BED="${DENUM_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.filt.bed"
+
+    if [[ ! -s "${BED}" ]]; then
+        echo "ERROR: het-candidate BED not found or empty: ${BED}"
+        return 1
+    fi
+
+    : > "${OUT_TSV}"
+    : > "${OUT_BED}"
+
+    local filter_expr="
+    (FMT/GT[1]==\"0|1\" || FMT/GT[1]==\"1|0\") &&
+    (FMT/GT[0]==\"0/1\" || FMT/GT[0]==\"1/0\") &&
+    FMT/DP>=${MIN_RDEPTH} && FMT/DP<=${MAX_RDEPTH} &&
+    FMT/GQ>=${GT_QUAL} &&
+    FMT/AD[1:1]>5 &&
+    FMT/AD[1:0]>5
+    "
+
+    shopt -s nullglob
+    local found=0
+    local header_written=0
+    for merged_vcf in "${REPHASED_MERGED_DIR}"/*.vcf.gz; do
+        found=1
+        local tmp_vcf="${OUT_TSV%.tsv}.temp.vcf.gz"
+
+        bcftools view -R "${BED}" -m2 -M2 -v snps -Oz -o "${tmp_vcf}" "${merged_vcf}"
+        bcftools index -f "${tmp_vcf}"
+
+        local col0
+        col0=$(bcftools query -l "${tmp_vcf}" | sed -n '1p')
+        if [[ "${col0}" != "${SAMPLE_PARENT}" ]]; then
+            echo "WARN: ${SAMPLE_PARENT} not sample[0] in $(basename "${merged_vcf}"); skipping."
+            rm -f "${tmp_vcf}" "${tmp_vcf}.csi"; continue
+        fi
+
+        # Header exactly once (from first valid VCF); data rows without -H after.
+        if [[ "${header_written}" -eq 0 ]]; then
+            bcftools view "${tmp_vcf}" -i "${filter_expr}" \
+            | bcftools query -H -f '%CHROM\t%POS\t[%GT\t][%DP\t][%GQ\t][%AD\t]\n' \
+            | head -n 1 \
+            > "${OUT_TSV}"
+            header_written=1
+        fi
+
+        bcftools view "${tmp_vcf}" -i "${filter_expr}" \
+        | bcftools query -f '%CHROM\t%POS\t[%GT\t][%DP\t][%GQ\t][%AD\t]\n' \
+            >> "${OUT_TSV}"
+
+        bcftools view "${tmp_vcf}" -i "${filter_expr}" \
+        | bcftools query -f '%CHROM\t%POS\n' \
+        | awk 'BEGIN{OFS="\t"} {print $1, $2-1, $2}' \
+            >> "${OUT_BED}"
+
+        rm -f "${tmp_vcf}" "${tmp_vcf}.csi"
+    done
+    shopt -u nullglob
+
+    if [[ "${found}" -eq 0 ]]; then
+        echo "ERROR: no merged VCFs in ${REPHASED_MERGED_DIR}"
+        return 1
+    fi
+
+    if [[ -s "${OUT_BED}" ]]; then
+        sort -k1,1 -k2,2n -u "${OUT_BED}" > "${OUT_BED}.tmp"
+        mv "${OUT_BED}.tmp" "${OUT_BED}"
+    fi
+
+    # canonicalize name expected by LR validation (overwrite the sampled BED)
+    mv "${OUT_BED}" "${BED}"
+    echo "[6b-rephase] Qualified-SNP BED (pre-LR): ${BED}"
+}
+
+
+
+REvalidate_dnmc_with_long_reads_rephase() {
+    echo "[6b-rephase] LR-validating sampled SNPs over rephased blocks (for C_B)"
+    conda activate whatshap-env
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+    local DENUM_DIR="${PHASED_DIR}/mismatch_analysis${REPHASE_SUFFIX}/denum_calcul"
+    local DNM_BED="${DENUM_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_hetc.bed"
+
+    # Distinct label avoids collisions with Part 4's 'hetc' outputs
+    local LR_LABEL="hetc${REPHASE_SUFFIX}"
+
+    # dnmc_readcheck.py now writes directly into DENUM_DIR (arg 11); no mv after.
+    python "${WORKING_DIR}/src/dnmc_readcheck.py" \
+        "${SAMPLE_CHILD}" \
+        "${HP_BAM_PATH}" \
+        "${DNM_BED}" \
+        "${MIN_BASE_QUAL}" \
+        "${MIN_MAP_QUAL}" \
+        "${WINDW}" \
+        "${ALT_READ_COUNT}" \
+        "F" \
+        "${LR_LABEL}" \
+        "${TOTAL_READ_COUNT_MIN}" \
+        "${DENUM_DIR}"
+
+    echo "[6b-rephase] Independent LR-validated qualified SNPs:"
+    echo "             ${DENUM_DIR}/${SAMPLE_CHILD}_LR_validated_${LR_LABEL}.bed"
+}
+
+# ===========================================================================
+## STEP 6d (zero path): No LR-validated rephase DNMs.
+##   Set B contributes 0 candidates, so the candidate-weighted rate collapses
+##   to the original set-A rate. We do NOT compute C_B (pointless when d_B=0).
+##   The merged file == set A; the NEW-only file is empty (header only).
+## ==========================================================================
+
+final_summary_rephase_zero() {
+    echo "[6d-rephase] Set B = 0 validated DNMs; final rate = original set-A rate"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+
+    # --- Set A (previous) ---
+    local A_DNMC="${PHASED_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv"
+    local A_DENUM="${PHASED_DIR}/mismatch_analysis/denum_calcul"
+    local A_CALLABLE="${A_DENUM}/callable_genome.txt"
+    local A_QUALBED="${A_DENUM}/${SAMPLE_CHILD}_LR_validated_hetc.bed"
+
+    local MERGED_DNMC="${PHASED_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}_with_rephase.tsv"
+    local B_NEW_DNMC="${PHASED_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}_rephase_NEWonly.tsv"
+    local SUMMARY_FILE="${PHASED_DIR}/final_summary_with_rephase.txt"
+
+    if [[ ! -f "${A_DNMC}" ]]; then
+        echo "ERROR: set-A final DNM file missing: ${A_DNMC}"
+        return 1
+    fi
+    if [[ ! -f "${A_CALLABLE}" ]]; then
+        echo "ERROR: set-A callable_genome.txt missing: ${A_CALLABLE}"
+        return 1
+    fi
+
+    # Merged == set A (nothing new to add); NEW-only is empty (header only).
+    cp -f "${A_DNMC}" "${MERGED_DNMC}"
+    head -n 1 "${A_DNMC}" > "${B_NEW_DNMC}"
+
+    # ---- Set A counts and rate (identical to Part 4's final_summary) ----
+    local dA qual_A sampled_A accessible_A
+    dA=$(awk 'NR>1 && $1 !~ /^#/ && NF>0' "${A_DNMC}" | wc -l)
+    qual_A=$(wc -l < "${A_QUALBED}")
+    sampled_A=$(grep "total_sampled_snps"    "${A_CALLABLE}" | awk '{print $2}')
+    accessible_A=$(grep "total_callable_bases" "${A_CALLABLE}" | awk '{print $2}')
+
+    local C_A r_A
+    read -r C_A r_A <<<"$(awk \
+        -v dA="${dA}" -v qA="${qual_A}" -v sA="${sampled_A:-0}" -v cA="${accessible_A:-0}" '
+        BEGIN{
+            CA = (sA>0)? (qA/sA)*cA : 0
+            rA = (CA>0)? dA/CA : 0
+            printf "%.6e %.6e", CA, rA
+        }')"
+
+    {
+        echo "================ Final results: previous + rephase (set B = 0) ============"
+        echo "Independent file (set A) : ${A_DNMC}"
+        echo "Set B                    : 0 LR-validated DNMs (no contribution)"
+        echo "Set B new-only file      : ${B_NEW_DNMC} (empty)"
+        echo "Merged file (A union B)  : ${MERGED_DNMC} (== set A)"
+        echo "-------------------------------------------------------------------"
+        echo "Set A : d_A=${dA}  sampled=${sampled_A}  qualified=${qual_A}  accessible=${accessible_A}"
+        printf "Set A : C_A=%.6e  r_A=%.6e\n" "${C_A}" "${r_A}"
+        echo "Set B : d_B=0  (skipped callable-genome-rephase)"
+        echo "-------------------------------------------------------------------"
+        echo "Merged unique DNM count  : ${dA}"
+        printf "Final mutation rate (= set-A rate) = %.6e\n" "${r_A}"
+        echo "==========================================================================="
+    } | tee "${SUMMARY_FILE}"
+
+    echo
+    echo "[6d-rephase] Summary written to: ${SUMMARY_FILE}"
+}
+
+
+# ===========================================================================
+## STEP 6d : Independent files + merged file + candidate-weighted mutation rate
+##   Set A = previous results (steps 3b/4), untouched.
+##   Set B = rephase results (this part), independent callable genome.
+##   d_B    = ONLY part-6 candidates NOT already present in set A.
+##   r_w    = (d_A*r_A + d_B*r_B) / (d_A + d_B)   [candidate-weighted]
+## ==========================================================================
+
+final_summary_with_rephase() {
+    echo "[6d-rephase] Building merged DNM set and candidate-weighted mutation rate"
+
+    local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
+
+    # --- Set A (previous) ---
+    local A_DNMC="${PHASED_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv"
+    local A_DENUM="${PHASED_DIR}/mismatch_analysis/denum_calcul"
+    local A_CALLABLE="${A_DENUM}/callable_genome.txt"
+    local A_QUALBED="${A_DENUM}/${SAMPLE_CHILD}_LR_validated_hetc.bed"
+
+    # --- Set B (rephase) : LR-validated canonical candidates from Part 6a ---
+    local B_DNMC="${PHASED_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.tsv"
+    local B_DENUM="${PHASED_DIR}/mismatch_analysis${REPHASE_SUFFIX}/denum_calcul"
+    local B_CALLABLE="${B_DENUM}/callable_genome.txt"
+    local B_QUALBED="${B_DENUM}/${SAMPLE_CHILD}_LR_validated_hetc${REPHASE_SUFFIX}.bed"
+
+    # --- Independent + merged candidate files ---
+    local MERGED_DNMC="${PHASED_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}_with_rephase.tsv"
+    local B_NEW_DNMC="${PHASED_DIR}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}_rephase_NEWonly.tsv"
+    local SUMMARY_FILE="${PHASED_DIR}/final_summary_with_rephase.txt"
+
+    local f
+    for f in "${A_DNMC}" "${B_DNMC}" "${A_CALLABLE}" "${B_CALLABLE}"; do
+        if [[ ! -f "${f}" ]]; then
+            echo "ERROR: required file missing: ${f}"
+            return 1
+        fi
+    done
+
+    # ---- Merged (A union B), dedup by chrom:pos, header from A ----
+    # Skip any stray '#'-prefixed header lines (defensive) and blank lines.
+    {
+        head -n 1 "${A_DNMC}"
+        tail -n +2 "${A_DNMC}"
+        tail -n +2 "${B_DNMC}"
+    } | awk '
+        NR==1 { print; next }
+        $1 ~ /^#/ { next }
+        NF==0 { next }
+        { k=$1":"$2; if(!(k in s)){ s[k]=1; print } }
+    ' > "${MERGED_DNMC}"
+
+    # ---- Set B "new only" = B candidates whose chrom:pos absent from A ----
+    {
+        head -n 1 "${B_DNMC}"
+        awk '
+            NR==FNR { if (FNR>1 && $1 !~ /^#/ && NF>0) a[$1":"$2]=1; next }
+            FNR==1  { next }
+            $1 ~ /^#/ { next }
+            NF==0 { next }
+            { if (!(($1":"$2) in a)) print }
+        ' "${A_DNMC}" "${B_DNMC}"
+    } > "${B_NEW_DNMC}"
+
+    # ---- Counts (count real data rows, not wc-l-minus-1) ----
+    local dA dB_new
+    dA=$(awk 'NR>1 && $1 !~ /^#/ && NF>0' "${A_DNMC}" | wc -l)
+    dB_new=$(awk 'NR>1 && $1 !~ /^#/ && NF>0' "${B_NEW_DNMC}" | wc -l)
+    [[ "${dA}"     -lt 0 ]] && dA=0
+    [[ "${dB_new}" -lt 0 ]] && dB_new=0
+
+    # ---- Callable genome A (C_A) ----
+    local sampled_A accessible_A qual_A
+    sampled_A=$(grep "total_sampled_snps"    "${A_CALLABLE}" | awk '{print $2}')
+    accessible_A=$(grep "total_callable_bases" "${A_CALLABLE}" | awk '{print $2}')
+    qual_A=$(wc -l < "${A_QUALBED}")
+
+    # ---- Callable genome B (C_B), independent ----
+    local sampled_B accessible_B qual_B
+    sampled_B=$(grep "total_sampled_snps"    "${B_CALLABLE}" | awk '{print $2}')
+    accessible_B=$(grep "total_callable_bases" "${B_CALLABLE}" | awk '{print $2}')
+    qual_B=$(wc -l < "${B_QUALBED}")
+
+    # ---- Rates and candidate-weighted average ----
+    # C_A = (qual_A/sampled_A)*accessible_A ;  r_A = dA / C_A
+    # C_B = (qual_B/sampled_B)*accessible_B ;  r_B = dB_new / C_B
+    # r_w = (dA*r_A + dB_new*r_B) / (dA + dB_new)
+    local C_A r_A C_B r_B r_w
+    read -r C_A r_A C_B r_B r_w <<<"$(awk \
+        -v dA="${dA}" -v qA="${qual_A}" -v sA="${sampled_A:-0}" -v cA="${accessible_A:-0}" \
+        -v dB="${dB_new}" -v qB="${qual_B}" -v sB="${sampled_B:-0}" -v cB="${accessible_B:-0}" '
+        BEGIN{
+            CA = (sA>0)? (qA/sA)*cA : 0
+            CB = (sB>0)? (qB/sB)*cB : 0
+            rA = (CA>0)? dA/CA : 0
+            rB = (CB>0)? dB/CB : 0
+            w  = ((dA+dB)>0)? (dA*rA + dB*rB)/(dA+dB) : 0
+            printf "%.6e %.6e %.6e %.6e %.6e", CA, rA, CB, rB, w
+        }')"
+
+    {
+        echo "================ Final results: previous + rephase ================"
+        echo "Independent file (set A) : ${A_DNMC}"
+        echo "Independent file (set B) : ${B_DNMC}"
+        echo "Set B new-only file      : ${B_NEW_DNMC}"
+        echo "Merged file (A union B)  : ${MERGED_DNMC}"
+        echo "-------------------------------------------------------------------"
+        echo "Set A : d_A=${dA}  sampled=${sampled_A}  qualified=${qual_A}  accessible=${accessible_A}"
+        printf "Set A : C_A=%.6e  r_A=%.6e\n" "${C_A}" "${r_A}"
+        echo "Set B : d_B(new)=${dB_new}  sampled=${sampled_B}  qualified=${qual_B}  accessible=${accessible_B}"
+        printf "Set B : C_B=%.6e  r_B=%.6e\n" "${C_B}" "${r_B}"
+        echo "-------------------------------------------------------------------"
+        echo "Merged unique DNM count  : $(awk 'NR>1 && $1 !~ /^#/ && NF>0' "${MERGED_DNMC}" | wc -l)"
+        printf "Candidate-weighted mutation rate = (d_A*r_A + d_B*r_B)/(d_A+d_B) = %.6e\n" "${r_w}"
+        echo "==================================================================="
+    } | tee "${SUMMARY_FILE}"
+
+    echo
+    echo "[6d-rephase] Summary written to: ${SUMMARY_FILE}"
+}
+
+
+
 
 ##################################################
 # Main
@@ -1337,25 +2834,30 @@ main() {
         fi
 
         ############################################
-        # PART 1 — Data Preparation
+        # PART 1A — Data download
         ############################################
-        if [[ "$PART" == "1" ]]; then
-            echo "========== PART 1: Data preparation =========="
+        if [[ "$PART" == "1a" ]]; then
+            echo "========== PART 1A: Downloading data =========="
+            DOWNLOAD_JOBID=$(download_data_job)
+            echo "Download job submitted: ${DOWNLOAD_JOBID}"
+        fi
 
-            # Download data from AWS
-            # DOWNLOAD_JOBID=$(download_hifi_data_job)
-            # echo "Download job submitted: ${DOWNLOAD_JOBID}"
-
-     
-            PREPROCESS_VCF_JOBID=$(generate_preprocessing_job)
-            echo "VCF preprocessing job submitted: ${PREPROCESS_VCF_JOBID}"
-
+        ############################################
+        # PART 1B — BAM preprocessing
+        ############################################
+        if [[ "$PART" == "1b" ]]; then
+            echo "========== PART 1B: BAM preprocessing =========="
             PREPROCESS_BAM_JOBID=$(generate_bam_preprocessing_job)
-            echo "BAM preprocessing (check HP tag) job submitted: ${PREPROCESS_BAM_JOBID}" 
+            echo "BAM preprocessing (check HP tag) job submitted: ${PREPROCESS_BAM_JOBID}"
+        fi
 
-
-            # Normalize two sources of vcf in the child ( Illumina / Hifi) - optional
-            # norm_and_compare_vcfs
+        ############################################
+        # PART 1C — VCF preprocessing
+        ############################################
+        if [[ "$PART" == "1c" ]]; then
+            echo "========== PART 1C: VCF preprocessing =========="
+            PREPROCESS_VCF_JOBID=$(generate_vcf_preprocessing_job)
+            echo "VCF preprocessing job submitted: ${PREPROCESS_VCF_JOBID}"
         fi
 
 
@@ -1390,76 +2892,144 @@ main() {
             # Create a list of dnm candidates
             echo "Applying filters to identify de novo mutation candidates"
             filter_dnm_candidates
+
+            # Reject candidates where parent's Illumina BAM has ALT reads
+            echo "Validating DNM candidates against parent Illumina BAM"
+            validate_dnmc_with_parent_bam
      
 
-            # Additional filters with hifi suppport
-            echo "Validating DNM candidates with HiFi read support"
-            validate_dnmc_with_hifi_reads
+            # Additional filters with LR suppport
+            echo "Validating DNM candidates with long read support"
+            validate_dnmc_with_long_reads
 
         fi
 
 
-        ############################################
-        # PART 3 — Local rephasing
-        ############################################
+
+        # ---- inside main()'s for-loop ----
+
+        # PART 3 branch: self-skip if 0 candidates
         if [[ "$PART" == "3" ]]; then
             echo "========== PART 3: Local rephasing =========="
-            # Rephase the areas around the dnmc
-            regenerate_phasing_job
-    
+            if dnm_candidates_are_empty; then
+                echo "[3] 0 LR-validated DNM candidates from Part 2b; nothing to rephase. Skipping."
+            else
+                regenerate_phasing_job
+            fi
         fi
 
+        # PART 3-inline branch (used by the chain): self-skip if 0 candidates
+        if [[ "$PART" == "3-inline" ]]; then
+            echo "========== PART 3-INLINE: local phasing (in-process, for chain) =========="
+            if dnm_candidates_are_empty; then
+                echo "[3-inline] 0 LR-validated DNM candidates; nothing to rephase. Skipping cleanly."
+            else
+                _run_local_phasing_body
+            fi
+        fi
 
-        ############################################
-        # PART 3B — Re-merge + refined DNM
-        ############################################
+        # PART 3B branch: self-skip if 0 candidates
         if [[ "$PART" == "3b" ]]; then
             echo "========== PART 3B: Refined DNM detection =========="
-
-            # remerge the phased dnmc with the parent's vcf
-            remerge_unphased-parent_phased-child_vcfs
-
-            # Reextract the phased dnmc
-            reextract_phased_snp
-
-            # Recount within a block ==> Final results
-            recount_shared_alleles_per_PS_block
-
-            # Cleanup
-            clean_up
-
-            echo "Done part 3B"
+            if dnm_candidates_are_empty; then
+                echo "[3b] 0 LR-validated DNM candidates; no local phasing was done. Skipping refinement."
+            else
+                remerge_unphased-parent_phased-child_vcfs
+                reextract_phased_snp
+                recount_shared_alleles_per_PS_block
+                clean_up
+                echo "Done part 3B"
+            fi
         fi
 
-
-        ############################################
-        # PART 4 — Callable genome
-        ############################################
+        # PART 4 branch: zero-candidate path still computes the (d-independent) denominator
         if [[ "$PART" == "4" ]]; then
             echo "========== PART 4: Callable genome =========="
-            
-            # Find the denominator of the mutation rate
+            if dnm_candidates_are_empty; then
+                echo "[4] 0 LR-validated DNM candidates; d=0. Computing callable genome anyway,"
+                echo "[4] then reporting mutation rate = 0."
+                write_empty_final_dnmc
+            fi
+            # Denominator path is independent of the DNM count, so it runs either way.
             calculate_callable_genome
-
-            # Use the filters applied to the dnm to apply to the randomly selected snps
             REfilter_dnm_candidates
-
-            # Apply another filter - long read filter to those snps ==> see how many snps can we obtain
-            REvalidate_dnmc_with_hifi_reads
-
-            # Give a final summary results
+            REvalidate_dnmc_with_long_reads
             final_summary
         fi
 
+        
+
+        #############################################
+        ## PART CHAIN chain everything from 2b -> 3 -> 3b -> 4 in one go, with dependencies
+
+        if [[ "$PART" == "chain" ]]; then
+            echo "========== CHAIN: submit 2b -> 3 -> 3b -> 4 (afterok) =========="
+            submit_chain_2b_4_jobs
+        fi
+
 
         ############################################
-        # PART 5 — Clean up everything
+        # PART 5 — Fix the blocks that has mismatches
         ############################################
+       
         if [[ "$PART" == "5" ]]; then
-            echo "========== PART 5: Removing all the intermediate files  =========="
+            echo "========== PART 5: Extract high-mismatch blocks and locally rephase =========="
+            rephase_blocks_with_mismatches
+        fi
             
-           # Clean up all intermediate files
-           final_cleanup
+
+        ###############################################
+        # PART 6A — Re-run DNM detection with rephased blocks,
+        #           compute an INDEPENDENT callable genome for set B,
+        #           then build merged file + candidate-weighted mutation rate
+        ###############################################
+
+        if [[ "$PART" == "6a" ]]; then
+            echo "========== PART 6A: Submit remerge (8h Slurm job) + dependent rest =========="
+            submit_rephase_6a_jobs
+        fi
+
+        ###############################################
+        # PART 6a-merge — INTERNAL: runs inside the merge Slurm job only
+        ###############################################
+        if [[ "$PART" == "6a-merge" ]]; then
+            echo "========== PART 6A-MERGE: remerge all rephased regions =========="
+            run_rephase_merge
+        fi
+
+        ###############################################
+        # PART 6a-rest — INTERNAL: runs inside the dependent Slurm job only
+        #   (extract -> count -> filter -> validate -> 6b -> 6d)
+        ###############################################
+        if [[ "$PART" == "6a-rest" ]]; then
+            echo "========== PART 6A-REST: extract + count + filter + validate =========="
+            extract_rephase_phased_snp
+            count_rephase_mismatches
+            filter_rephase_dnm_candidates
+            validate_rephase_dnmc_with_parent_bam
+            validate_rephase_dnmc_with_hifi_reads
+
+            # Did any rephase candidate survive LR validation?
+            REPHASE_B_TSV="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc${REPHASE_SUFFIX}.tsv"
+            REPHASE_B_COUNT=0
+            if [[ -f "${REPHASE_B_TSV}" ]]; then
+                REPHASE_B_COUNT=$(awk 'NR>1 && $1 !~ /^#/ && NF>0' "${REPHASE_B_TSV}" | wc -l)
+            fi
+
+            if [[ "${REPHASE_B_COUNT}" -eq 0 ]]; then
+                echo "========== PART 6B/6D: No LR-validated rephase DNMs (set B = 0) =========="
+                echo "[6a-rest] Skipping callable-genome-rephase; set B contributes 0 DNMs."
+                echo "[6a-rest] Final rate = original set-A rate (unchanged)."
+                final_summary_rephase_zero
+            else
+                echo "========== PART 6B: Independent callable genome (rephased blocks) =========="
+                calculate_callable_genome_rephase
+                REfilter_dnm_candidates_rephase
+                REvalidate_dnmc_with_long_reads_rephase
+
+                echo "========== PART 6D: Merge previous + rephase, candidate-weighted rate =========="
+                final_summary_with_rephase
+            fi
         fi
 
 

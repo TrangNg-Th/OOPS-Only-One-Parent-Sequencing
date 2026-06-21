@@ -1,19 +1,37 @@
+#!/usr/bin/env python3
+
 import os
 import sys
 import pysam
 from collections import Counter, defaultdict
 
-os.chdir(os.getcwd())
-
 # ============================================================
 # Argument parsing
 # ============================================================
-if len(sys.argv) != 10:
+# Positional args (1-indexed as seen on the command line):
+#   1  child_id
+#   2  child_bam
+#   3  input_bed
+#   4  min_base_qual
+#   5  min_mapping_qual
+#   6  window
+#   7  alt_read_count
+#   8  verbose            (T/F)
+#   9  label              (e.g. dnmc, hetc, dnmc_rephase, hetc_rephase)
+#   10 total_read_min     (minimum ref+alt support; optional, may be absent)
+#   11 out_dir            (directory to write outputs into; optional)
+#
+# out_dir is OPTIONAL and defaults to the current working directory, so older
+# callers that pass only 10 args keep working unchanged. New callers pass an
+# explicit directory so outputs land next to the rest of that step's results
+# instead of in whatever directory the script happened to be launched from.
+if len(sys.argv) < 11 or len(sys.argv) > 12:
     print(
         "Usage: python dnmc_readcheck.py "
         "<child_id> <child_bam> <input_bed> "
         "<min_base_qual> <min_mapping_qual> "
-        "<window> <alt_read_count> <verbose> <label>"
+        "<window> <alt_read_count> <verbose> <label> <total_read_min> "
+        "[out_dir]"
     )
     sys.exit(1)
 
@@ -26,20 +44,59 @@ window = int(sys.argv[6])
 alt_read_count = int(sys.argv[7])
 verbose = sys.argv[8].upper() == "T"
 label = sys.argv[9].lower()
+total_read_min = sys.argv[10] if len(sys.argv) > 10 else None
 
-if label == "dnmc":
-    print("Processing DNM candidates...")
-elif label == "hetc":
-    print("Processing heterozygous candidates...")
+# Output directory: arg 11 if given, else CWD (back-compatible default).
+out_dir = sys.argv[11] if len(sys.argv) > 11 else os.getcwd()
+os.makedirs(out_dir, exist_ok=True)
+
+# ------------------------------------------------------------
+# Label handling
+# ------------------------------------------------------------
+# We accept the original labels ("dnmc", "hetc") AND their rephase
+# variants ("dnmc_rephase", "hetc_rephase"). The "base kind" drives
+# behaviour (banner text + whether verbose support reads are written),
+# while the full label is preserved verbatim in output filenames so
+# that set-A and set-B (rephase) runs never collide.
+base_kind = label
+for suffix in ("_rephase",):
+    if base_kind.endswith(suffix):
+        base_kind = base_kind[: -len(suffix)]
+        break
+
+if base_kind == "dnmc":
+    print(f"Processing DNM candidates... (label='{label}')")
+elif base_kind == "hetc":
+    print(f"Processing heterozygous candidates... (label='{label}')")
+else:
+    print(f"Processing candidates with label='{label}'")
+
+print(f"Output directory: {out_dir}")
 
 # ============================================================
 # Load candidate positions
 # ============================================================
 sites = []
+if not os.path.exists(input_bed):
+    print(f"ERROR: input BED not found: {input_bed}")
+    sys.exit(1)
+
 with open(input_bed) as f:
     for line in f:
-        chrom, start, end = line.rstrip().split("\t")[:3]
+        line = line.rstrip("\n")
+        if not line.strip():
+            continue
+        # tolerate a header line if one ever sneaks in
+        if line.startswith("#") or line.lower().startswith("chrom\t"):
+            continue
+        fields = line.split("\t")
+        if len(fields) < 3:
+            continue
+        chrom, start, end = fields[:3]
         sites.append((chrom, int(start), int(end)))
+
+if len(sites) == 0:
+    print(f"WARNING: no candidate sites found in {input_bed}")
 
 bam = pysam.AlignmentFile(child_bam, "rb")
 
@@ -54,7 +111,6 @@ for chrom, start, end in sites:
     # allele -> Counter(haplotype -> read count)
     allele_hp = defaultdict(Counter)
     allele_hp_reads = defaultdict(lambda: defaultdict(list))  # allele -> hp -> list of read names
-    
 
     for col in bam.pileup(
         chrom,
@@ -81,6 +137,7 @@ for chrom, start, end in sites:
             allele_hp[base][hp] += 1
             allele_hp_reads[base][hp].append(read.query_name)
 
+    ## Debugging output
     if verbose:
         print(f"Processing {chrom}:{pos}")
         for allele, hp_counts in allele_hp.items():
@@ -135,23 +192,28 @@ for chrom, start, end in sites:
     if alt_count < alt_read_count:
         continue
 
+    # Require minimum total read support (if specified)
+    if total_read_min is not None:
+        total_count = ref_count + alt_count
+        if total_count < int(total_read_min) - 1:
+            continue
+
     # ========================================================
     # Store result
     # ========================================================
     ref_hp = next(iter(allele_hp[ref_allele]))
     alt_hp = next(iter(allele_hp[alt_allele]))
-    
-    
+
     final_results[(chrom, pos)] = {
         "REF": {
             "allele": ref_allele,
-            "hp": next(iter(allele_hp[ref_allele])),
+            "hp": ref_hp,
             "count": ref_count,
             "read_ids": allele_hp_reads[ref_allele][ref_hp],
         },
         "ALT": {
             "allele": alt_allele,
-            "hp": next(iter(allele_hp[alt_allele])),
+            "hp": alt_hp,
             "count": alt_count,
             "read_ids": allele_hp_reads[alt_allele][alt_hp],
         },
@@ -163,15 +225,16 @@ bam.close()
 # Output summary
 # ============================================================
 print(f"Total candidates after read check: {len(final_results)}")
-print("The candidates left are...")
-for (chrom, pos), info in final_results.items():
-    print(f"{chrom}:{pos} --> {info}")
-    print()
+if verbose:
+    print("The candidates left are...")
+    for (chrom, pos), info in final_results.items():
+        print(f"{chrom}:{pos} --> {info}")
+        print()
 
 # ============================================================
 # Write BED (validated sites)
 # ============================================================
-out_bed = f"{child_id}_LR_validated_{label}.bed"
+out_bed = os.path.join(out_dir, f"{child_id}_LR_validated_{label}.bed")
 
 with open(out_bed, "w") as out:
     for (chrom, pos) in sorted(final_results):
@@ -183,7 +246,7 @@ print(f"Wrote {len(final_results)} sites to {out_bed}")
 # Write BED (windows for rephasing)
 # ============================================================
 size_kb = window // 1000
-window_bed = f"{child_id}_{label}_plusminus{size_kb}kb.bed"
+window_bed = os.path.join(out_dir, f"{child_id}_{label}_plusminus{size_kb}kb.bed")
 
 with open(window_bed, "w") as out:
     for (chrom, pos) in sorted(final_results):
@@ -195,9 +258,11 @@ print(f"Wrote {len(final_results)} sites to {window_bed}")
 # ============================================================
 # Write supporting read IDs for each haplotype / allele
 # ============================================================
-# Write supporting read IDs only when verbose == T and label == dnmc
-if verbose and label == "dnmc":
-    support_out = f"{child_id}_LR_validated_{label}_support_reads.tsv"
+# Write supporting read IDs only when verbose == T and this is a DNM run
+# (base_kind == "dnmc"), so both the original "dnmc" and the rephase
+# "dnmc_rephase" runs produce the support file.
+if verbose and base_kind == "dnmc":
+    support_out = os.path.join(out_dir, f"{child_id}_LR_validated_{label}_support_reads.tsv")
 
     with open(support_out, "w") as out:
         out.write("chrom\tpos\ttype\tallele\thaplotype\tread_count\tread_ids\n")
