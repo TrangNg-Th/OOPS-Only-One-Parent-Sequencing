@@ -28,6 +28,8 @@ conda env create -f environment.yml
 conda activate whatshap-env
 ```
 
+Prefer an installable package over cloning? See `recipe/` — a `conda-build` recipe that installs the pipeline as an `oops` command (`conda build recipe/`, then `conda install --use-local oops-dnm`).
+
 ---
 
 ## Pipeline at a glance

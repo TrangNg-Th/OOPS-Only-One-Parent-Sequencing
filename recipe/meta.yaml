@@ -1,0 +1,61 @@
+{% set version = "0.1.0" %}
+
+package:
+  name: oops-dnm
+  version: {{ version }}
+
+source:
+  # Build from the repo this recipe lives in (one level up).
+  path: ..
+
+build:
+  number: 0
+  # No compiled code and no Python-version-specific logic -- this is just
+  # shell + Python scripts copied into place, so it builds once and runs
+  # on any platform/Python version that satisfies the run requirements.
+  noarch: generic
+  script: build.sh
+
+requirements:
+  run:
+    - python >=3.12
+    - bcftools >=1.17
+    - samtools >=1.17
+    - tabix
+    - whatshap
+    - pandas
+    - numpy
+    - scipy
+    - matplotlib
+    - pysam
+    - awscli
+    - wget
+
+test:
+  commands:
+    # Smoke tests only -- the real pipeline needs a Slurm cluster, real
+    # BAMs/VCFs, and project directories, so we don't try to *run* it here.
+    - test -x "${PREFIX}/bin/oops"
+    - bash -n "${PREFIX}/share/oops/main.sh"
+    - python -c "import pandas, numpy, scipy, pysam"
+
+about:
+  home: https://github.com/your-org/oops
+  summary: >
+    Estimate germline de novo mutation (DNM) rates from a trio where only
+    one parent has sequencing data.
+  description: |
+    OOPS (Only One Parent Sequencing) phases a child's long reads into two
+    haplotypes, compares each haplotype against the one sequenced parent's
+    genotypes, and flags single-haplotype mismatches as de novo mutation
+    candidates. Candidates are validated against long reads and weighed
+    against a callable-genome estimate to produce a mutation rate.
+    Requires a Slurm cluster.
+  license: UNSPECIFIED
+  # No LICENSE file exists in the repo yet -- add one and set this field
+  # (e.g. "MIT", "GPL-3.0-only") before publishing this package anywhere
+  # public, including a personal Anaconda.org channel.
+
+extra:
+  recipe-maintainers:
+    - your-github-handle
