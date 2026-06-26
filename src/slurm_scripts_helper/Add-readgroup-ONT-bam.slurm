@@ -5,7 +5,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --time=8:00:00
 #SBATCH --mem=8G
-#SBATCH -A r00379
+#SBATCH -A CHANGE_ME_TO_YOUR_SLURM_ACCOUNT
+##SBATCH --partition=CHANGE_ME_IF_YOUR_CLUSTER_REQUIRES_ONE
 #SBATCH -o logs/addRG_%x_%j.out
 #SBATCH -e logs/addRG_%x_%j.err
 
@@ -30,7 +31,9 @@ OUTPUT_BAM=${SAMPLE}.CHM13.minimap2.fixed.bam
 # =============================================
 # Load modules
 # =============================================
-module load samtools
+if command -v module &> /dev/null; then
+    module load samtools || true
+fi
 
 # =============================================
 # Add Read Group

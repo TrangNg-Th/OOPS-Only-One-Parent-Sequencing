@@ -4,13 +4,14 @@
 #SBATCH -o slurm_output/1.downspl.%j.txt
 #SBATCH -e slurm_output/1.downspl.%j_.err
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=nguyetrt@iu.edu
+#SBATCH --mail-user=CHANGE_ME_TO_YOUR_EMAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=6:00:00 # downsampling need maybe 4 hrs
 #SBATCH --mem=8G
-#SBATCH -A r00379
+#SBATCH -A CHANGE_ME_TO_YOUR_SLURM_ACCOUNT
+##SBATCH --partition=CHANGE_ME_IF_YOUR_CLUSTER_REQUIRES_ONE
 
 
 set -euo pipefail
@@ -23,7 +24,9 @@ set -euo pipefail
 
 ## Load moduless
 ## =============================================================
-module load samtools
+if command -v module &> /dev/null; then
+    module load samtools || true
+fi
 
 
 ## Change the percentage of sampling by changing the value after -s. 

@@ -11,6 +11,8 @@ dependencies:
   - whatshap
   - pandas
   - numpy
+  - scipy
+  - matplotlib
   - pysam
   - awscli
-prefix: /N/u/nguyetrt/Quartz/.conda/envs/whatshap-env
+  - wget

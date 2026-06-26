@@ -14,12 +14,13 @@ Standard DNM calling needs both parents sequenced. OOPS doesn't. It uses the **c
 
 | Sample | Data |
 |---|---|
-| Child | Long-read BAM (HiFi **or** ONT) + Illumina BAM |
+| Child | Long-read BAM (HiFi **or** ONT) |
 | Sequenced parent | Illumina BAM |
+| Both (child + sequenced parent) | One **joint** Illumina VCF that already contains both samples' genotypes (`FORMAT/DP`, `GQ`, `GT`, etc.) — Part 1c splits it per-sample. Neither sample needs a raw Illumina BAM beyond what's listed above; genotype-level Illumina evidence comes entirely from this VCF, and the parent's Illumina BAM is used separately for read-level ALT confirmation (Part 2b/6a). |
 | Absent parent | — nothing — |
 | Reference | The FASTA all BAMs were mapped to |
 
-**Dependencies:** `bcftools`, `samtools`, `whatshap`, `pysam`, `aws-cli` (S3), SLURM.
+**Dependencies:** `bcftools`, `samtools`, `tabix`, `whatshap`, `wget`, `pysam`, `pandas`, `numpy`, `scipy`, `matplotlib`, `aws-cli` (S3), SLURM.
 
 ```bash
 git clone https://github.com/your-org/oops && cd oops
@@ -61,7 +62,9 @@ cp data/example_readtype-coverage_parent_child.txt \
    data/<datatype>_<coverage>_<child>_<parent>.txt
 ```
 
-It defines `BAM_CHILD_URL`, `NAME_BAM_CHILD`, `VCF_PATH`, `NAME_VCF_FILE`, `REFERENCE_PATH`, `NAME_REFERENCE_FILE`, etc. Without `--source`, the example file is used.
+It defines `BAM_CHILD_URL`/`NAME_BAM_CHILD`/`NAME_BAMIDX_CHILD` (child long-read BAM), `BAM_PARENT_URL`/`NAME_BAM_PARENT`/`NAME_BAMIDX_PARENT` (parent Illumina BAM), `VCF_PATH`/`NAME_VCF_FILE` (the one joint Illumina VCF covering both samples), and `REFERENCE_PATH`/`NAME_REFERENCE_FILE`/`NAME_REFERENCE`. Without `--source`, the example file is used.
+
+**Slurm account / partition:** every job `main.sh` submits bills `-A r00379` by default — that's the original author's HPC allocation and is almost certainly wrong for you. Pass `--account <your-account>` (required on most clusters) and `--partition <your-partition>` (optional; omit to let Slurm pick the cluster's default) on every invocation, e.g. `--account myalloc --partition general`. This pipeline assumes a Slurm cluster throughout — there is no non-Slurm execution path.
 
 ---
 
@@ -94,9 +97,9 @@ Run order: `0 → 1a → 1b → 1c → 2 → 2b → 3 → 3b → 4`. Parts 5 and
 Prints the resolved parameters and dependencies; submits nothing. Verify the child BAM, VCF, and reference paths before continuing.
 
 ### 1a / 1b / 1c — Data prep
-- **1a** downloads the child long-read BAM + index, the joint Illumina VCF, and the reference (then `faidx`).
-- **1b** strips any existing `HP` tags from the long-read BAM, sorts, indexes → `<child>_clean.bam`.
-- **1c** splits the joint VCF per sample, removes `PS` tags, indexes → per-sample `*.unphased.noPS.vcf.gz`.
+- **1a** downloads the child long-read BAM + index, the parent's Illumina BAM + index, the one joint Illumina VCF (genotypes for *both* samples), and the reference (then `faidx`).
+- **1b** strips any existing `HP` tags from the child's long-read BAM, sorts, indexes → `<child>_clean.bam`. (The parent's Illumina BAM is left as downloaded — it's only read directly, never modified.)
+- **1c** splits the joint VCF into the two per-sample VCFs it already contains, removes `PS` tags, indexes → per-sample `*.unphased.noPS.vcf.gz`. No separate child Illumina BAM is downloaded or needed — child genotype/depth/quality data comes entirely from this VCF.
 
 Each submits a short Slurm job.
 
@@ -104,12 +107,19 @@ Each submits a short Slurm job.
 Submits `build_hapl_<child>`: filters the child VCF to diploid sites, runs `whatshap phase` (producing PS-tagged blocks), then `whatshap haplotag` to stamp every read with `HP1`/`HP2` → `<child>_HP.bam`.
 *Check `*.stats.tsv`: at 50× HiFi expect block N50 >100 kb and >85% of hets phased.*
 
+**Using a different phasing program:** pass `--external-phased-vcf <FILE>` to skip `whatshap phase` and use a VCF already phased by another tool instead (the file must carry `FORMAT/PS` and phased `|` genotypes). `whatshap` itself is not optional — only the initial phase call is swappable. Haplotagging and phase-block stats always run via `whatshap` afterward regardless of this flag, since `whatshap haplotag`/`stats` accept any correctly phased VCF no matter which tool produced it. Either way, Part 2 — and again Part 2b, independently — checks the phased VCF for a non-missing `FORMAT/PS` and fails fast with a clear error if phasing didn't actually produce phase sets, instead of silently yielding zero candidates deep in Part 2b.
+
 ### 2b — First DNM detection
 Merges phased child + unphased parent VCFs, keeps PS-tagged child SNPs, counts H0/H1 mismatches per block, flags blocks where exactly one haplotype has a single mismatch, and validates each candidate in the haplotagged long reads (ALT must sit on one haplotype, ≥ `--alt-read-count`, ≥ `--total-rd-ct-min` total).
 Outputs in `<child>_phasedvcf/mismatch_analysis/`: `*_mismatch.tsv`, `*_dnmc.bed/.tsv`, `<child>_LR_validated_dnmc.bed`, `<child>_dnmc_plusminus<W>kb.bed`.
 
 ### 3 — Local rephasing around candidates
 Submits a job that re-runs WhatShap in a ±`--window` bp region around each candidate. Global phasing accumulates switch errors over distance; local rephasing gives a cleaner haplotype call near each site. A candidate that vanishes here was a phase-switch artifact.
+
+This step always rephases with `whatshap phase` — it's not swappable via a flag. If you'd rather phase these windows with your own program, let Part 3 run once to lay out its inputs, then before running Part 3b (or `--part chain`), replace its output file with your own phased VCF for the same regions (must carry `FORMAT/PS` and phased genotypes):
+
+- Region BED Part 3 phases: `<prj-dir>/<child>_phasedvcf/mismatch_analysis/<child>_dnmc_plusminus<window-kb>kb.bed`
+- File to replace: `<prj-dir>/<child>_phasedvcf/mismatch_analysis/<child>.illumVCF_LRbam.phased.<window-kb>kb.vcf.gz`
 
 ### 3b — Refined DNM detection
 Re-merges the locally rephased child VCF with the parent, re-extracts phased SNPs in the candidate windows, and re-counts with the same asymmetry logic — a confirmation pass. Survivors are promoted.
@@ -147,6 +157,8 @@ Re-runs the full detection logic on Part 5's rephased blocks and computes an ind
 | `--window_rephase` | Sub-window in Part 5 (bp) | 100000 | Lower for very long blocks |
 | `--threshold_rephase` | Mismatch count to flag a block | 100 | Lower to rephase more aggressively |
 | `--cpus` / `--time` | Phasing job resources | 8 / 10:00:00 | Large BAMs / many candidates |
+| `--account` | Slurm account to bill (`-A`) | `r00379` (the author's — change this) | Always, unless you happen to share the author's allocation |
+| `--partition` | Slurm partition/queue | unset (cluster default) | Your cluster requires an explicit partition |
 
 ---
 
@@ -173,9 +185,12 @@ src/
   count_mismatches.py            # per-block mismatch counting + candidate ID
   count_rephase_mismatches.py    # same logic on rephased blocks (6a)
   dnmc_readcheck.py              # long-read validation (ALT on one haplotype)
+  parent_readcheck.py            # validates candidates against parent Illumina BAM
   callable_genome.py             # SNP sampling + callable-genome estimate (4)
   rephase_blocks.py              # flags high-mismatch blocks for Part 5
   fix_PhaseSet.py                # reformats WhatShap PS output to TSV
+  dnm_vs_depth.py                # standalone plot: DNM calls/rate vs read depth
+  slurm_scripts_helper/          # optional one-off SLURM utilities (add read groups, check/downsample BAM coverage)
 ```
 
 ---

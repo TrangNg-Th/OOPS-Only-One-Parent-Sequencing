@@ -38,7 +38,8 @@ WHAT TO RUN  (--part)
   Optional:      5 -> 6a   (phase-switch refinement)
 
   0      Print resolved configuration and exit (run this first)
-  1a     Download data (long-read BAM, Illumina VCF, reference)
+  1a     Download data (child long-read BAM, parent Illumina BAM,
+         joint Illumina VCF, reference)
   1b     BAM preprocessing (strip HP tags, sort, index)
   1c     VCF preprocessing (split joint VCF by sample, drop PS, index)
   2      Initial phasing (WhatShap) + haplotag the child BAM
@@ -65,6 +66,36 @@ OPTIONS  (defaults in brackets)
     --time <HH:MM:SS>       Slurm wall time                 [10:00:00]
     --reference <FILE>      Reference FASTA                 [<prj-dir>/reference/chm13v2.0_maskedY_rCRS.fa]
     --source <FILE>         Source config under data/       [example_readtype-coverage_parent_child.txt]
+    --account <NAME>        Slurm account to bill (-A)      [r00379]
+                             Default is the original author's HPC allocation
+                             -- almost certainly wrong for you. Set this to
+                             your own Slurm account before running anything.
+    --partition <NAME>      Slurm partition/queue           [unset]
+                             Unset lets Slurm pick the cluster's default
+                             partition. Set this if your cluster requires an
+                             explicit partition/queue name.
+
+  Phasing (Part 2)
+    --external-phased-vcf <FILE>  Skip `whatshap phase`; use a VCF already
+                                   phased by another tool instead. The file
+                                   MUST carry FORMAT/PS and phased (|)
+                                   genotypes -- Part 2 checks for this and
+                                   fails fast if it doesn't. Haplotagging and
+                                   phase-block stats ALWAYS run via whatshap
+                                   afterward, regardless of this flag --
+                                   whatshap is not an optional dependency,
+                                   only the initial phase call is swappable.
+                                   [unset -> run whatshap phase as before]
+
+  Local rephasing (Part 3)
+    Part 3 always rephases candidate-window regions with `whatshap phase`
+    (this refinement step is not swappable via a flag). If you'd rather
+    phase these windows with your own program, run Part 3 to let it lay out
+    the inputs, then before running Part 3b/chain replace its output file:
+      <prj-dir>/<child>_phasedvcf/mismatch_analysis/<child>.illumVCF_LRbam.phased.<window-kb>kb.vcf.gz
+    with your own phased VCF for that same region set (must carry FORMAT/PS
+    and phased genotypes for <child>). The region BED Part 3 phases is:
+      <prj-dir>/<child>_phasedvcf/mismatch_analysis/<child>_dnmc_plusminus<window-kb>kb.bed
 
   Site / genotype filters
     --min-rdepth <N>        Min read depth                  [15]
@@ -135,6 +166,9 @@ EXCLUDE_CHROMS="chrX,chrY,chrM"
 WINDOW_REPHASE=100000
 REPHASE_SUFFIX="_rephase"
 TOTAL_READ_COUNT_MIN=5
+EXTERNAL_PHASED_VCF=""
+ACCOUNT="r00379"
+PARTITION=""
 
 
 ##############################################
@@ -180,6 +214,9 @@ while [[ $# -gt 0 ]]; do
         --threshold_rephase) THRESHOLD_REPHASE="$2"; shift 2 ;;
         --exclude-chroms) EXCLUDE_CHROMS="$2"; shift 2 ;;
         --total-rd-ct-min) TOTAL_READ_COUNT_MIN="$2"; shift 2 ;;
+        --external-phased-vcf) EXTERNAL_PHASED_VCF="$2"; shift 2 ;;
+        --account) ACCOUNT="$2"; shift 2 ;;
+        --partition) PARTITION="$2"; shift 2 ;;
         --help) usage ;;
         *) echo "Unknown parameter: $1"; usage ;;
     esac
@@ -235,7 +272,6 @@ fi
 
 
 
-
 ## Read the source file
 if [[ ! -f "${SOURCE_FILE}" ]]; then
     echo "ERROR: ${SOURCE} not found at ${SOURCE_FILE}"
@@ -270,6 +306,13 @@ HP_BAM_INDEX="${HP_BAM_PATH}.bai"
 # Parent Illumina BAM (for parental allele evidence at DNM candidates)
 ORIG_BAM_PARENT_PATH="${BAM_DIR}/${NAME_BAM_PARENT}"
 
+# Slurm partition directive: only emitted into generated job scripts if the
+# user actually set --partition. Embeds as a blank (harmless) line otherwise.
+SBATCH_PARTITION_LINE=""
+if [[ -n "${PARTITION}" ]]; then
+    SBATCH_PARTITION_LINE="#SBATCH --partition=${PARTITION}"
+fi
+
 ##############################################
 # Print configuration summary
 ##############################################
@@ -293,6 +336,8 @@ echo "Mismatch count threshold for rephase  : ${THRESHOLD_REPHASE}"
 echo "Alt read count (LR)                   : ${ALT_READ_COUNT}"
 echo "Verbose LR validation                 : ${VERBOSE}"
 echo "Data source file name                 : ${SOURCE_FILE}"
+echo "Slurm account (-A)                    : ${ACCOUNT}"
+echo "Slurm partition                       : ${PARTITION:-<cluster default>}"
 echo "Bam file of the parent                : ${BAM_PARENT_URL}/${NAME_BAM_PARENT}"
 echo "Bam file of the child                 : ${BAM_DIR}/${NAME_BAM_CHILD}"
 echo "Vcf file                              : ${NAME_VCF}"
@@ -340,14 +385,17 @@ download_data_job() {
 #SBATCH --cpus-per-task=1
 #SBATCH --time=08:00:00
 #SBATCH --mem=4G
-#SBATCH -A r00379
+#SBATCH -A ${ACCOUNT}
+${SBATCH_PARTITION_LINE}
 #SBATCH -o slurm_output/download_.%j.txt
 #SBATCH -e slurm_output/download_.%j_.err
 
 set -euo pipefail
 
-module load aws-cli/2.25.5
-module load samtools
+if command -v module &> /dev/null; then
+    module load aws-cli/2.25.5 || true
+    module load samtools || true
+fi
 
 SAMPLE=${SAMPLE_CHILD}
 PRJ_DIR=${PRJ_DIR}
@@ -419,12 +467,15 @@ generate_bam_preprocessing_job() {
 #SBATCH --cpus-per-task=2
 #SBATCH --time=06:00:00
 #SBATCH --mem=8G
-#SBATCH -A r00379
+#SBATCH -A ${ACCOUNT}
+${SBATCH_PARTITION_LINE}
 #SBATCH -o slurm_output/prepr_bam_.%j.txt
 #SBATCH -e slurm_output/prepr_bam_.%j_.err
 
 set -euo pipefail
-module load samtools
+if command -v module &> /dev/null; then
+    module load samtools || true
+fi
 
 INPUT_BAM="${ORIG_BAM_PATH}"
 OUTPUT_BAM="${CLEAN_BAM_PATH}"
@@ -501,15 +552,18 @@ generate_vcf_preprocessing_job() {
 #SBATCH --cpus-per-task=2
 #SBATCH --time=02:00:00
 #SBATCH --mem=8G
-#SBATCH -A r00379
+#SBATCH -A ${ACCOUNT}
+${SBATCH_PARTITION_LINE}
 #SBATCH -o slurm_output/preprocess_vcf_.%j.txt
 #SBATCH -e slurm_output/preprocess_vcf_.%j_.err
 
 
 set -euo pipefail
-export PS1=\${PS1:-}  
+export PS1=\${PS1:-}
 
-module load bcftools
+if command -v module &> /dev/null; then
+    module load bcftools || true
+fi
 
 # Split VCFs
 bcftools view -s ${SAMPLE_PARENT} -Oz -o ${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.vcf.gz ${ILLUM_DIR}/${NAME_VCF_FILE}
@@ -562,16 +616,19 @@ generate_phasing_job() {
 #SBATCH --cpus-per-task=${CPUS}
 #SBATCH --time=${TIME}
 #SBATCH --mem=12G
-#SBATCH -A r00379
+#SBATCH -A ${ACCOUNT}
+${SBATCH_PARTITION_LINE}
 #SBATCH -o slurm_output/build_hapl_%j.txt
 #SBATCH -e slurm_output/build_hapl_%j.err
 
 set -euo pipefail
 export PS1=\${PS1:-}
 
-module load bcftools
-module load samtools
-module load conda
+if command -v module &> /dev/null; then
+    module load bcftools || true
+    module load samtools || true
+    module load conda || true
+fi
 conda activate whatshap-env
 
 REF="${REF}"
@@ -617,41 +674,59 @@ rm -f "\${PHASED_VCF}" "\${PHASED_VCF}.csi" "\${PHASED_VCF}.tbi"
 rm -f "\${PHASE_STATS_TSV}" "\${PHASE_BLOCKS_TSV}"
 rm -f "\${HP_BAM}" "\${HP_BAM}.bai"
 
-echo "[phase] Building diploid-only VCF to avoid mixed-ploidy crashes"
-bcftools view -s "\${SAMPLE}" -Ou "\${ILLUM_VCF}" \
-  | bcftools view -i 'GT!="hap" && GT!="mis"' \
-  -Oz -o "\${DIPLOID_VCF}"
+EXTERNAL_PHASED_VCF="${EXTERNAL_PHASED_VCF}"
 
-echo "[phase] Indexing diploid-only VCF"
-bcftools index -f "\${DIPLOID_VCF}"
+if [[ -z "\${EXTERNAL_PHASED_VCF}" ]]; then
 
-echo "[phase] Checking whether any records remain after diploid filtering"
-N_DIPLOID=\$(bcftools index -n "\${DIPLOID_VCF}")
-echo "[phase] Number of records retained: \${N_DIPLOID}"
+    echo "[phase] Building diploid-only VCF to avoid mixed-ploidy crashes"
+    bcftools view -s "\${SAMPLE}" -Ou "\${ILLUM_VCF}" \
+      | bcftools view -i 'GT!="hap" && GT!="mis"' \
+      -Oz -o "\${DIPLOID_VCF}"
 
-if [[ "\${N_DIPLOID}" -eq 0 ]]; then
-    echo "ERROR: No records remained after diploid filtering: \${DIPLOID_VCF}"
-    exit 1
+    echo "[phase] Indexing diploid-only VCF"
+    bcftools index -f "\${DIPLOID_VCF}"
+
+    echo "[phase] Checking whether any records remain after diploid filtering"
+    N_DIPLOID=\$(bcftools index -n "\${DIPLOID_VCF}")
+    echo "[phase] Number of records retained: \${N_DIPLOID}"
+
+    if [[ "\${N_DIPLOID}" -eq 0 ]]; then
+        echo "ERROR: No records remained after diploid filtering: \${DIPLOID_VCF}"
+        exit 1
+    fi
+
+    echo "[phase] Checking for remaining non-diploid-style genotypes"
+    N_BAD=\$(bcftools query -f '[%GT\n]' "\${DIPLOID_VCF}" | awk '
+        \$1 !~ /^[.0-9]+[\/|][.0-9]+$/ {bad++}
+        END {print bad+0}
+    ')
+    echo "[phase] Non-diploid-style GT records remaining: \${N_BAD}"
+
+    if [[ "\${N_BAD}" -gt 0 ]]; then
+        echo "ERROR: Non-diploid-style GT records still remain in \${DIPLOID_VCF}"
+        exit 1
+    fi
+
+    echo "[phase] Running whatshap phase on diploid-only VCF"
+    whatshap phase \
+      --reference "\${REF}" \
+      --ignore-read-groups \
+      -o "\${PHASED_VCF}" \
+      "\${DIPLOID_VCF}" "\${CLEAN_BAM}"
+
+else
+    echo "[phase] --external-phased-vcf supplied: \${EXTERNAL_PHASED_VCF}"
+    echo "[phase] Skipping whatshap phase; using this externally-phased VCF instead."
+    echo "[phase] (Phasing program is not restricted to whatshap -- haplotagging"
+    echo "[phase]  and phase-block stats below work on any correctly phased VCF.)"
+
+    if [[ ! -f "\${EXTERNAL_PHASED_VCF}" ]]; then
+        echo "ERROR: external phased VCF not found: \${EXTERNAL_PHASED_VCF}"
+        exit 1
+    fi
+
+    cp -f "\${EXTERNAL_PHASED_VCF}" "\${PHASED_VCF}"
 fi
-
-echo "[phase] Checking for remaining non-diploid-style genotypes"
-N_BAD=\$(bcftools query -f '[%GT\n]' "\${DIPLOID_VCF}" | awk '
-    \$1 !~ /^[.0-9]+[\/|][.0-9]+$/ {bad++}
-    END {print bad+0}
-')
-echo "[phase] Non-diploid-style GT records remaining: \${N_BAD}"
-
-if [[ "\${N_BAD}" -gt 0 ]]; then
-    echo "ERROR: Non-diploid-style GT records still remain in \${DIPLOID_VCF}"
-    exit 1
-fi
-
-echo "[phase] Running whatshap phase on diploid-only VCF"
-whatshap phase \
-  --reference "\${REF}" \
-  --ignore-read-groups \
-  -o "\${PHASED_VCF}" \
-  "\${DIPLOID_VCF}" "\${CLEAN_BAM}"
 
 echo "[phase] Checking phased VCF is readable"
 bcftools view -h "\${PHASED_VCF}" >/dev/null
@@ -659,6 +734,18 @@ bcftools view -h "\${PHASED_VCF}" >/dev/null
 echo "[phase] Rebuilding phased VCF index"
 rm -f "\${PHASED_VCF}.csi" "\${PHASED_VCF}.tbi"
 bcftools index -f "\${PHASED_VCF}"
+
+echo "[phase] Verifying phased VCF carries FORMAT/PS tags for \${SAMPLE} (required by Part 2b onward)"
+N_PS=\$(bcftools query -s "\${SAMPLE}" -f '[%PS\n]' "\${PHASED_VCF}" 2>/dev/null | awk '\$1!="." && \$1!=""' | wc -l)
+echo "[phase] Records with a non-missing FORMAT/PS value: \${N_PS}"
+
+if [[ "\${N_PS}" -eq 0 ]]; then
+    echo "ERROR: \${PHASED_VCF} has no FORMAT/PS tags for \${SAMPLE}."
+    echo "       Phasing did not produce phase sets, so Part 2b cannot proceed."
+    echo "       If you supplied --external-phased-vcf, that tool's output must"
+    echo "       include FORMAT/PS and phased (|) genotypes."
+    exit 1
+fi
 
 echo "[phase] Writing phasing stats"
 whatshap stats \
@@ -754,6 +841,54 @@ ensure_fresh_vcf_index() {
 }
 
 
+# ===========================================================================
+## Helper: gate Part 2b on Part 2's output actually being phased.
+##
+## Runs no matter HOW the phased child VCF got there -- whatshap phase (Part
+## 2 default), --external-phased-vcf (Part 2, alternate phasing tool), or a
+## phased VCF dropped into place by hand outside this script entirely. Part
+## 2b/3/3b/4 all assume FORMAT/PS + phased (|) genotypes are present; without
+## this gate a missing PS tag fails silently deep inside extract_phased_snp
+## (zero rows extracted) instead of with a clear message right here.
+## ==========================================================================
+check_phased_vcf_has_ps() {
+    local phased_vcf="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/${SAMPLE_CHILD}.illumVCF_LRbam.phased.vcf.gz"
+
+    echo "[ps-check] Verifying Part 2 produced a phased VCF (FORMAT/PS present): ${phased_vcf}"
+
+    if [[ ! -f "${phased_vcf}" ]]; then
+        echo "ERROR: phased VCF not found: ${phased_vcf}"
+        echo "       Run --part 2 first (with whatshap, or with --external-phased-vcf"
+        echo "       pointing at output from another phasing program), or place a"
+        echo "       phased VCF at this exact path yourself before running Part 2b."
+        return 1
+    fi
+
+    if [[ ! -f "${phased_vcf}.csi" && ! -f "${phased_vcf}.tbi" ]]; then
+        echo "[ps-check] No index found; indexing"
+        bcftools index -f "${phased_vcf}"
+    fi
+
+    local n_ps
+    n_ps=$(bcftools query -s "${SAMPLE_CHILD}" -f '[%PS\n]' "${phased_vcf}" 2>/dev/null \
+        | awk '$1!="." && $1!=""' | wc -l)
+
+    echo "[ps-check] Records with a non-missing FORMAT/PS value for ${SAMPLE_CHILD}: ${n_ps}"
+
+    if [[ "${n_ps}" -eq 0 ]]; then
+        echo "ERROR: ${phased_vcf} has no FORMAT/PS tags for ${SAMPLE_CHILD}."
+        echo "       Part 2b requires a phased VCF with phase-set (PS) annotations."
+        echo "       The phasing step itself is NOT restricted to whatshap -- any tool's"
+        echo "       output is accepted as long as it writes FORMAT/PS and phased (|)"
+        echo "       genotypes. Re-run Part 2 (optionally with --external-phased-vcf),"
+        echo "       or regenerate the phased VCF with your tool of choice."
+        return 1
+    fi
+
+    echo "[ps-check] OK: phased VCF carries PS tags for ${SAMPLE_CHILD}."
+}
+
+
 merge_unphased-parent_phased-child_vcfs() {
     # clean up
     rm -f ./slurm*out
@@ -789,7 +924,9 @@ merge_unphased-parent_phased-child_vcfs() {
 
 
 extract_phased_snp() {
-    module load conda
+    if command -v module &> /dev/null; then
+        module load conda || true
+    fi
 
     local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
@@ -1035,9 +1172,11 @@ validate_dnmc_with_parent_bam() {
 _run_local_phasing_body() {
     set -euo pipefail
 
-    module load bcftools || true
-    module load samtools || true
-    module load conda || true
+    if command -v module &> /dev/null; then
+        module load bcftools || true
+        module load samtools || true
+        module load conda || true
+    fi
     conda activate whatshap-env
 
     local SAMPLE="${SAMPLE_CHILD}"
@@ -1115,7 +1254,8 @@ regenerate_phasing_job() {
 #SBATCH --cpus-per-task=${CPUS}
 #SBATCH --time=${TIME}
 #SBATCH --mem=8G
-#SBATCH -A r00379
+#SBATCH -A ${ACCOUNT}
+${SBATCH_PARTITION_LINE}
 #SBATCH -o slurm_output/build_hapl_local_%j.txt
 #SBATCH -e slurm_output/build_hapl_local_%j.err
 
@@ -1178,7 +1318,8 @@ _chain_write_step_slurm() {
 #SBATCH --cpus-per-task=${CPUS}
 #SBATCH --time=${walltime}
 #SBATCH --mem=${mem}
-#SBATCH -A r00379
+#SBATCH -A ${ACCOUNT}
+${SBATCH_PARTITION_LINE}
 #SBATCH -o ${log_dir}/${jobname}_%j.out
 #SBATCH -e ${log_dir}/${jobname}_%j.err
 
@@ -1269,8 +1410,10 @@ reextract_phased_snp() {
     local MERGED_PHASED_VCF=${PHASED_VCF}/merged
     local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
 
-    module load bcftools 
-    module load conda
+    if command -v module &> /dev/null; then
+        module load bcftools || true
+        module load conda || true
+    fi
 
     echo "Reextracting phased snps"
     
@@ -1555,7 +1698,9 @@ final_summary() {
 ## ==========================================================================
 
 rephase_blocks_with_mismatches(){
-    module load conda
+    if command -v module &> /dev/null; then
+        module load conda || true
+    fi
     conda activate whatshap-env
 
     echo "[Rephasing]: Rephasing blocks with many mismatches (potential switch errors)"
@@ -1642,7 +1787,6 @@ rephase_blocks_with_mismatches(){
     local REPHASE_CPUS=1
     local REPHASE_MEM="8G"
     local REPHASE_TIME="04:00:00"
-    local REPHASE_ACCOUNT="r00379"
 
     local CONFIG_FILE="${REPHASE_DIR}/rephase_config.env"
     local ARRAY_SCRIPT="${REPHASE_DIR}/run_rephase_region_array.sh"
@@ -1676,9 +1820,11 @@ N_ARRAY_TASKS="$2"
 
 source "${CONFIG_FILE}"
 
-module load conda
-module load samtools
-module load bcftools
+if command -v module &> /dev/null; then
+    module load conda || true
+    module load samtools || true
+    module load bcftools || true
+fi
 
 conda activate whatshap-env
 
@@ -1823,7 +1969,8 @@ EOS
     ARRAY_JOB_ID=$(sbatch \
         --parsable \
         --job-name="rephase_${SAMPLE_CHILD}" \
-        --account="${REPHASE_ACCOUNT}" \
+        --account="${ACCOUNT}" \
+        ${PARTITION:+--partition="${PARTITION}"} \
         --nodes=1 \
         --ntasks=1 \
         --array="${ARRAY_SPEC}" \
@@ -1881,7 +2028,8 @@ EOS
         --parsable \
         --dependency=afterany:${ARRAY_JOB_ID} \
         --job-name="rephase_summary_${SAMPLE_CHILD}" \
-        --account="${REPHASE_ACCOUNT}" \
+        --account="${ACCOUNT}" \
+        ${PARTITION:+--partition="${PARTITION}"} \
         --nodes=1 \
         --ntasks=1 \
         --cpus-per-task=1 \
@@ -1912,7 +2060,9 @@ run_rephase_merge() {
 
     mkdir -p "${MERGED_DIR}"
 
-    module load bcftools
+    if command -v module &> /dev/null; then
+        module load bcftools || true
+    fi
 
     # Part 6a depends on the locally rephased VCFs produced by Part 5
     # (rephase_blocks_with_mismatches), which writes into local_vcfs/ via a
@@ -2072,7 +2222,8 @@ submit_rephase_6a_jobs() {
 #SBATCH --cpus-per-task=2
 #SBATCH --time=08:00:00
 #SBATCH --mem=8G
-#SBATCH -A r00379
+#SBATCH -A ${ACCOUNT}
+${SBATCH_PARTITION_LINE}
 #SBATCH -o ${LOG_DIR}/merge6a_%j.out
 #SBATCH -e ${LOG_DIR}/merge6a_%j.err
 
@@ -2099,7 +2250,8 @@ EOF
 #SBATCH --cpus-per-task=2
 #SBATCH --time=08:00:00
 #SBATCH --mem=12G
-#SBATCH -A r00379
+#SBATCH -A ${ACCOUNT}
+${SBATCH_PARTITION_LINE}
 #SBATCH -o ${LOG_DIR}/rest6a_%j.out
 #SBATCH -e ${LOG_DIR}/rest6a_%j.err
 
@@ -2876,6 +3028,15 @@ main() {
         ############################################
         if [[ "$PART" == "2b" ]]; then
             echo "========== PART 2B: Merge + first DNM detection =========="
+
+            # Gate: Part 2's output must actually be phased (FORMAT/PS present)
+            # before we touch it. Works regardless of which phasing program
+            # produced it (whatshap, --external-phased-vcf, or hand-placed).
+            echo "Checking that Part 2 produced a properly phased VCF (FORMAT/PS present)"
+            if ! check_phased_vcf_has_ps; then
+                echo "[2b] Aborting: phased VCF check failed."
+                exit 1
+            fi
 
             # merge phased vcf of the child to unphased vcf of parent
             echo "Re-merging parent and child VCFs for DNM detection"

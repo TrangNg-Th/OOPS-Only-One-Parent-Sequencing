@@ -5,13 +5,14 @@
 #SBATCH -o slm/avg-depth-%j.out
 #SBATCH -e slm/avg-depth-%j.err
 #SBATCH --mail-type=NONE
-#SBATCH --mail-user=nguyetrt@iu.edu
+#SBATCH --mail-user=CHANGE_ME_TO_YOUR_EMAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=10:00:00
 #SBATCH --mem=8G
-#SBATCH -A r00379
+#SBATCH -A CHANGE_ME_TO_YOUR_SLURM_ACCOUNT
+##SBATCH --partition=CHANGE_ME_IF_YOUR_CLUSTER_REQUIRES_ONE
 
 
 ## ==============================================
@@ -25,7 +26,9 @@ set -euo pipefail
 
 
 # Load modules
-module load samtools
+if command -v module &> /dev/null; then
+    module load samtools || true
+fi
 echo "Coverage stats for bam files in the current directory:" > bam.coverage.stat.txt
 
 echo "[$(date)] Starting bam coverage check..."
