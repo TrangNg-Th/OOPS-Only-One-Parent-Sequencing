@@ -1,4 +1,4 @@
-name: whatshap-env
+name: oops
 channels:
   - conda-forge
   - bioconda

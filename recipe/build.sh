@@ -10,9 +10,10 @@ set -euo pipefail
 INSTALL_DIR="${PREFIX}/share/oops"
 
 mkdir -p "${INSTALL_DIR}"
-cp -r "${SRC_DIR}/main.sh"   "${INSTALL_DIR}/"
-cp -r "${SRC_DIR}/src"       "${INSTALL_DIR}/"
-cp -r "${SRC_DIR}/data"      "${INSTALL_DIR}/"
+cp -r "${SRC_DIR}/main.sh"        "${INSTALL_DIR}/"
+cp -r "${SRC_DIR}/src"            "${INSTALL_DIR}/"
+cp -r "${SRC_DIR}/data"           "${INSTALL_DIR}/"
+cp    "${SRC_DIR}/environment.yml" "${INSTALL_DIR}/"
 [ -f "${SRC_DIR}/README.md" ] && cp "${SRC_DIR}/README.md" "${INSTALL_DIR}/"
 
 chmod +x "${INSTALL_DIR}/main.sh"

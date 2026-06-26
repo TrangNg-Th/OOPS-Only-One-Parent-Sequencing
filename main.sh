@@ -74,6 +74,16 @@ OPTIONS  (defaults in brackets)
                              Unset lets Slurm pick the cluster's default
                              partition. Set this if your cluster requires an
                              explicit partition/queue name.
+    --conda-env <NAME>      Conda env with whatshap/bcftools/samtools  [oops]
+                             Every phasing/haplotagging/stats step runs
+                             `conda activate <NAME>` before calling whatshap.
+                             Set this to whatever you named the environment
+                             when you ran `conda env create -f environment.yml`
+                             (or created when installing the conda-build
+                             package) -- e.g. pass `--conda-env whatshap-env`
+                             if you already have an unrelated environment
+                             named "oops" and put this pipeline's tools under
+                             a different name instead.
 
   Phasing (Part 2)
     --external-phased-vcf <FILE>  Skip `whatshap phase`; use a VCF already
@@ -169,6 +179,7 @@ TOTAL_READ_COUNT_MIN=5
 EXTERNAL_PHASED_VCF=""
 ACCOUNT="r00379"
 PARTITION=""
+CONDA_ENV_NAME="oops"
 
 
 ##############################################
@@ -217,6 +228,7 @@ while [[ $# -gt 0 ]]; do
         --external-phased-vcf) EXTERNAL_PHASED_VCF="$2"; shift 2 ;;
         --account) ACCOUNT="$2"; shift 2 ;;
         --partition) PARTITION="$2"; shift 2 ;;
+        --conda-env) CONDA_ENV_NAME="$2"; shift 2 ;;
         --help) usage ;;
         *) echo "Unknown parameter: $1"; usage ;;
     esac
@@ -338,6 +350,7 @@ echo "Verbose LR validation                 : ${VERBOSE}"
 echo "Data source file name                 : ${SOURCE_FILE}"
 echo "Slurm account (-A)                    : ${ACCOUNT}"
 echo "Slurm partition                       : ${PARTITION:-<cluster default>}"
+echo "Conda environment (phasing/whatshap)  : ${CONDA_ENV_NAME}"
 echo "Bam file of the parent                : ${BAM_PARENT_URL}/${NAME_BAM_PARENT}"
 echo "Bam file of the child                 : ${BAM_DIR}/${NAME_BAM_CHILD}"
 echo "Vcf file                              : ${NAME_VCF}"
@@ -629,7 +642,7 @@ if command -v module &> /dev/null; then
     module load samtools || true
     module load conda || true
 fi
-conda activate whatshap-env
+conda activate "${CONDA_ENV_NAME}"
 
 REF="${REF}"
 SAMPLE="${SAMPLE_CHILD}"
@@ -947,7 +960,7 @@ extract_phased_snp() {
 
 
     ## Fix the extract file to tab delimited format
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     python ${WORKING_DIR}/src/fix_PhaseSet.py \
       ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv \
@@ -972,7 +985,7 @@ count_shared_alleles_per_PS_block() {
   mkdir -p ${MISMATCH_ANALYSIS}
   
   echo " Counting alleles per haplotype block"
-  conda activate whatshap-env
+  conda activate "${CONDA_ENV_NAME}"
   python ${WORKING_DIR}/src/count_mismatches.py \
     ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv \
     ${MISMATCH_ANALYSIS} \
@@ -1079,7 +1092,7 @@ filter_dnm_candidates() {
 
 validate_dnmc_with_long_reads(){
 
-  conda activate whatshap-env
+  conda activate "${CONDA_ENV_NAME}"
 
   local HIFI_BAM="${HP_BAM_PATH}"
   local OUT_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis"
@@ -1108,7 +1121,7 @@ validate_dnmc_with_long_reads(){
 validate_dnmc_with_parent_bam() {
     echo "[parent-check] Validating DNM candidates against parent Illumina BAM"
 
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
     local MISMATCH_ANALYSIS=${PHASED_VCF}/mismatch_analysis
@@ -1177,7 +1190,7 @@ _run_local_phasing_body() {
         module load samtools || true
         module load conda || true
     fi
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     local SAMPLE="${SAMPLE_CHILD}"
     local MM_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/"
@@ -1432,7 +1445,7 @@ reextract_phased_snp() {
 
  
     ## fix again the extracted format into tab delim file
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
     python ${WORKING_DIR}/src/fix_PhaseSet.py \
       ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps.tsv \
       ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps_fixed.tsv
@@ -1458,7 +1471,7 @@ recount_shared_alleles_per_PS_block() {
 
   echo "Recounting mismatches in PS blocks"
   
-  conda activate whatshap-env
+  conda activate "${CONDA_ENV_NAME}"
   python "${WORKING_DIR}/src/count_mismatches.py" \
   "${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps.tsv" \
   "${MISMATCH_ANALYSIS}" \
@@ -1508,7 +1521,7 @@ calculate_callable_genome() {
   local POST_ANALYSIS=${PHASED_VCF}/mismatch_analysis/denum_calcul
   
   mkdir -p ${POST_ANALYSIS}
-  conda activate whatshap-env
+  conda activate "${CONDA_ENV_NAME}"
   EXCLUDE_CHROMS="${EXCLUDE_CHROMS}" \
   
   python "${WORKING_DIR}/src/callable_genome.py" \
@@ -1595,7 +1608,7 @@ REfilter_dnm_candidates() {
 
 REvalidate_dnmc_with_long_reads(){
 
-  conda activate whatshap-env
+  conda activate "${CONDA_ENV_NAME}"
 
   local OUT_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis/denum_calcul"
   local HIFI_BAM="${HP_BAM_PATH}"
@@ -1701,7 +1714,7 @@ rephase_blocks_with_mismatches(){
     if command -v module &> /dev/null; then
         module load conda || true
     fi
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     echo "[Rephasing]: Rephasing blocks with many mismatches (potential switch errors)"
 
@@ -1807,6 +1820,7 @@ FULL_VCF="${FULL_VCF}"
 FULL_BAM="${FULL_BAM}"
 REF="${REF}"
 REPHASE_DIR="${REPHASE_DIR}"
+CONDA_ENV_NAME="${CONDA_ENV_NAME}"
 EOF
 
     echo "[Rephasing]: Writing Slurm array script to ${ARRAY_SCRIPT}"
@@ -1826,7 +1840,7 @@ if command -v module &> /dev/null; then
     module load bcftools || true
 fi
 
-conda activate whatshap-env
+conda activate "${CONDA_ENV_NAME}"
 
 TASK_ID="${SLURM_ARRAY_TASK_ID}"
 
@@ -2320,7 +2334,7 @@ extract_rephase_phased_snp() {
     sort -t',' -k1,1 -k2,2n -u "${OUT_TSV}" > "${OUT_TSV}.tmp"
     mv "${OUT_TSV}.tmp" "${OUT_TSV}"
 
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     python "${WORKING_DIR}/src/fix_PhaseSet.py" \
         "${OUT_TSV}" \
@@ -2340,7 +2354,7 @@ count_rephase_mismatches() {
     local MISMATCH_ANALYSIS_DIR="${PHASED_DIR}/mismatch_analysis"
 
     
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     python "${WORKING_DIR}/src/count_rephase_mismatches.py" \
     "${HT_DIR}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps${REPHASE_SUFFIX}.tsv" \
@@ -2467,7 +2481,7 @@ filter_rephase_dnm_candidates() {
 validate_rephase_dnmc_with_parent_bam() {
     echo "[6a-parent-check] Validating rephased DNM candidates against parent Illumina BAM"
 
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
     local MISMATCH_ANALYSIS_DIR="${PHASED_DIR}/mismatch_analysis"
@@ -2541,7 +2555,7 @@ validate_rephase_dnmc_with_parent_bam() {
 validate_rephase_dnmc_with_hifi_reads() {
     echo "[6a-rephase] Validating rephased DNMC candidates with HiFi reads"
 
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
     local REPHASE_ANALYSIS_DIR="${PHASED_DIR}/mismatch_analysis"
@@ -2624,7 +2638,7 @@ validate_rephase_dnmc_with_hifi_reads() {
 calculate_callable_genome_rephase() {
     echo "[6b-rephase] Computing INDEPENDENT callable genome over rephased blocks"
 
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
     local HT_DIR="${PHASED_DIR}/HTblocks"
@@ -2744,7 +2758,7 @@ REfilter_dnm_candidates_rephase() {
 
 REvalidate_dnmc_with_long_reads_rephase() {
     echo "[6b-rephase] LR-validating sampled SNPs over rephased blocks (for C_B)"
-    conda activate whatshap-env
+    conda activate "${CONDA_ENV_NAME}"
 
     local PHASED_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
     local DENUM_DIR="${PHASED_DIR}/mismatch_analysis${REPHASE_SUFFIX}/denum_calcul"

@@ -25,10 +25,12 @@ Standard DNM calling needs both parents sequenced. OOPS doesn't. It uses the **c
 ```bash
 git clone https://github.com/your-org/oops && cd oops
 conda env create -f environment.yml
-conda activate whatshap-env
+conda activate oops
 ```
 
 Prefer an installable package over cloning? See `recipe/` — a `conda-build` recipe that installs the pipeline as an `oops` command (`conda build recipe/`, then `conda install --use-local oops-dnm`).
+
+**Already have an environment named `oops` for something else?** Every phasing/haplotagging step in `main.sh` runs `conda activate "${CONDA_ENV_NAME}"` internally (default `oops`) before calling `whatshap`/`bcftools`/`samtools`. Pass `--conda-env <name>` to point it at whatever you actually named the environment that has these tools installed — e.g. `--conda-env whatshap-env` if that name is already taken by an unrelated environment on your system and you installed this pipeline's dependencies under a different name.
 
 ---
 
@@ -161,6 +163,7 @@ Re-runs the full detection logic on Part 5's rephased blocks and computes an ind
 | `--cpus` / `--time` | Phasing job resources | 8 / 10:00:00 | Large BAMs / many candidates |
 | `--account` | Slurm account to bill (`-A`) | `r00379` (the author's — change this) | Always, unless you happen to share the author's allocation |
 | `--partition` | Slurm partition/queue | unset (cluster default) | Your cluster requires an explicit partition |
+| `--conda-env` | Env name `conda activate`d before whatshap/bcftools/samtools calls | `oops` | You already have an env named `oops` for something else |
 
 ---
 
