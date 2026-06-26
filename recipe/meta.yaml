@@ -42,10 +42,9 @@ test:
     - python -c "import pandas, numpy, scipy, pysam"
 
 about:
-  home: https://github.com/your-org/oops
+  home: https://github.com/TrangNg-Th/OOPS-Only-One-Parent-Sequencing
   summary: >
-    Estimate germline de novo mutation (DNM) rates from a trio where only
-    one parent has sequencing data.
+    Estimate germline de novo mutation (DNM) rates from a duo with one parent has sequencing data.
   description: |
     OOPS (Only One Parent Sequencing) phases a child's long reads into two
     haplotypes, compares each haplotype against the one sequenced parent's
@@ -53,11 +52,6 @@ about:
     candidates. Candidates are validated against long reads and weighed
     against a callable-genome estimate to produce a mutation rate.
     Requires a Slurm cluster.
-  license: UNSPECIFIED
-  # No LICENSE file exists in the repo yet -- add one and set this field
-  # (e.g. "MIT", "GPL-3.0-only") before publishing this package anywhere
-  # public, including a personal Anaconda.org channel.
+  license: TODO
 
-extra:
-  recipe-maintainers:
-    - your-github-handle
+
