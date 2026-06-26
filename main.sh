@@ -1316,7 +1316,8 @@ _chain_common_args() {
 --exclude-chroms ${EXCLUDE_CHROMS} \
 --total-rd-ct-min ${TOTAL_READ_COUNT_MIN} \
 --window_rephase ${WINDOW_REPHASE} \
---threshold_rephase ${THRESHOLD_REPHASE}"
+--threshold_rephase ${THRESHOLD_REPHASE} \
+--conda-env ${CONDA_ENV_NAME}"
 }
 
 _chain_write_step_slurm() {
@@ -2189,7 +2190,8 @@ _rephase_common_args() {
 --alt-read-count ${ALT_READ_COUNT} \
 --verbose ${VERBOSE} \
 --window_rephase ${WINDOW_REPHASE} \
---threshold_rephase ${THRESHOLD_REPHASE}"
+--threshold_rephase ${THRESHOLD_REPHASE} \
+--conda-env ${CONDA_ENV_NAME}"
 }
 
 submit_rephase_6a_jobs() {
