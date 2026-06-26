@@ -14,7 +14,9 @@ build:
   # shell + Python scripts copied into place, so it builds once and runs
   # on any platform/Python version that satisfies the run requirements.
   noarch: generic
-  script: build.sh
+  # conda-build auto-detects and runs build.sh by filename alone -- do not
+  # also set build/script here, or it errors with "Found a build.sh script
+  # and a build/script section inside meta.yaml."
 
 requirements:
   run:
