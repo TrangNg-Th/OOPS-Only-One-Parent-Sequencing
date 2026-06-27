@@ -28,7 +28,7 @@ requirements:
     - pandas
     - numpy
     - scipy
-    - matplotlib
+    - matplotlib-base
     - pysam
     - awscli
     - wget
