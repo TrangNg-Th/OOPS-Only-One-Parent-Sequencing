@@ -12,11 +12,10 @@ BAM_PARENT_URL=s3://platinum-pedigree-data/data/illumina/mapped/CHM13
 REFERENCE_PATH=https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0_maskedY_rCRS.fa.gz
 ## _____________________________________________________________
 ## File names (user editable but fixed names)
-## =========================================================
-NAME_BAM_CHILD=NA12879.CHM13.haplotagged.downsampled_7pc.bam
-NAME_BAMIDX_CHILD=NA12879.CHM13.haplotagged.downsampled_7pc.bam.bai
+## _____________________________________________________________
+NAME_BAM_CHILD=NA12879.CHM13.haplotagged.downsampled_14pc.bam
+NAME_BAMIDX_CHILD=NA12879.CHM13.haplotagged.downsampled_14pc.bam.bai
 NAME_VCF_FILE=CEPH1463.CHM13.illumina-dragen.oa.vcf.gz
-NAME_REFERENCE_FILE=chm13v2.0_maskedY_rCRS.fa
 NAME_REFERENCE_FILE=chm13v2.0_maskedY_rCRS.fa
 NAME_REFERENCE=CHM13
 NAME_BAM_PARENT=NA12878.illumina.bam

@@ -318,15 +318,14 @@ HP_BAM_INDEX="${HP_BAM_PATH}.bai"
 # Parent Illumina BAM (for parental allele evidence at DNM candidates)
 ORIG_BAM_PARENT_PATH="${BAM_DIR}/${NAME_BAM_PARENT}"
 
-# Slurm partition directive: only emitted into generated job scripts if the
-# user actually set --partition. Embeds as a blank (harmless) line otherwise.
+# If the user wants to set partition, if not, blank 
 SBATCH_PARTITION_LINE=""
 if [[ -n "${PARTITION}" ]]; then
     SBATCH_PARTITION_LINE="#SBATCH --partition=${PARTITION}"
 fi
 
 ##############################################
-# Print configuration summary
+# Print configs
 ##############################################
 
 echo "================ Pipeline Configuration ================"
@@ -367,7 +366,6 @@ echo ""
 # Load modules
 ##############################################
 # If on HPS, load these modules, if not, skip
-
 
 # ===========================================================================
 ## STEP 0 - Load modules and print configuration summary
@@ -465,7 +463,7 @@ EOF
 
 
 # ===========================================================================
-## STEP 1B - BAM preprocessing (remove HP tags if present, sort, index)
+## STEP 1B - BAM preprocessing (remove HP tags if present in bam, sort, index)
 ## ==========================================================================
 
 generate_bam_preprocessing_job() {
@@ -797,11 +795,9 @@ EOF
 
 
 # ===========================================================================
-## Helper: is the 2b DNM window BED empty (i.e. 0 LR-validated candidates)?
-## Returns 0 (true) when there are zero candidates to refine.
-## Used by Parts 3, 3b, 4 to self-skip the local-rephasing refinement and let
-## the chain finish with a d=0 mutation rate instead of crashing on an empty
-## regions file.
+## Helper: 
+## Sometimes, after step 2b DNM window BED file is empty =>  0 LR-validated candidates
+## So it returns 0. Will use in Parts 3, 3b, 4 to skip the local-rephasing refinement and just fix mutationn count = 0
 ## ==========================================================================
 dnm_candidates_are_empty() {
     local MM_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis"
@@ -813,9 +809,9 @@ dnm_candidates_are_empty() {
     return 1
 }
 
-# Write a final_dnmc file that has the standard header but ZERO data rows, so
+# Still write a final_dnmc file that has the standard header but ZERO data rows, so
 # Part 4's final_summary reports DNMC count = 0 instead of failing on a missing
-# file. Header mirrors what count_mismatches.py emits for the dnmc.20kb.tsv.
+# file. The header mirrors what count_mismatches.py emits for the dnmc.20kb.tsv.
 write_empty_final_dnmc() {
     local PHASED_VCF="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
     local dnmc_file="${PHASED_VCF}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv"
@@ -856,8 +852,10 @@ ensure_fresh_vcf_index() {
 
 # ===========================================================================
 ## Helper: gate Part 2b on Part 2's output actually being phased.
-##
-## Runs no matter HOW the phased child VCF got there -- whatshap phase (Part
+## Since users can have different phasing tools,
+## It's better to check for the presence of FORMAT/PS and phased (|) genotypes in the
+## phased child VCF before proceeding to Part 2b, rather than assuming whatshap
+## Idea : Runs no matter HOW the phased child VCF got there -- whatshap phase (Part
 ## 2 default), --external-phased-vcf (Part 2, alternate phasing tool), or a
 ## phased VCF dropped into place by hand outside this script entirely. Part
 ## 2b/3/3b/4 all assume FORMAT/PS + phased (|) genotypes are present; without
@@ -902,6 +900,11 @@ check_phased_vcf_has_ps() {
 }
 
 
+
+## ==========================================================================
+## STEP 2b - Merge unphased parent VCF with phased child VCF,
+## extract phased SNPs, and count shared alleles per haplotype block
+## ==========================================================================
 merge_unphased-parent_phased-child_vcfs() {
     # clean up
     rm -f ./slurm*out
@@ -916,10 +919,9 @@ merge_unphased-parent_phased-child_vcfs() {
     local PARENT_VCF=${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
     local CHILD_VCF=${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.vcf.gz
 
-    # Ensure indexes exist AND are newer than their VCFs. The old code only
+    # Make sure indexes exist AND are newer than their VCFs. The old code only
     # indexed when an index was ABSENT, so a stale (older-than-VCF) index
-    # slipped through and caused: "[W::hts_idx_load3] The index file is older
-    # than the data file", which can yield partial/NaN reads downstream.
+
     ensure_fresh_vcf_index "${PARENT_VCF}"
     ensure_fresh_vcf_index "${CHILD_VCF}"
 
@@ -935,7 +937,9 @@ merge_unphased-parent_phased-child_vcfs() {
 }
 
 
-
+## ==========================================================================
+## Once the merged VCF is created, extract the phased SNPs and write to a TSV
+## ==========================================================================
 extract_phased_snp() {
     if command -v module &> /dev/null; then
         module load conda || true
@@ -976,7 +980,9 @@ extract_phased_snp() {
     echo ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv
     }
 
-
+## ==========================================================================
+## Run the count_mismatches.py script to count shared alleles per haplotype block
+## ==========================================================================
 count_shared_alleles_per_PS_block() {
   local PHASED_VCF=${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf
   local EXTRACT_HAPLBLOCK=${PHASED_VCF}/HTblocks
@@ -1001,6 +1007,10 @@ count_shared_alleles_per_PS_block() {
   echo "Done"
 }
 
+
+## ==========================================================================
+## Filter the de novo mutation candidates based on genotype, depth, and allele-balance criteria
+## ==========================================================================
 
 filter_dnm_candidates() {
     echo "[DNM] Filtering de novo mutation candidates"
@@ -1090,6 +1100,9 @@ filter_dnm_candidates() {
 }
 
 
+## ==========================================================================
+## Validate DNM candidates with long-read evidence
+## ==========================================================================
 validate_dnmc_with_long_reads(){
 
   conda activate "${CONDA_ENV_NAME}"
@@ -1118,6 +1131,9 @@ validate_dnmc_with_long_reads(){
 }
 
 
+## ==========================================================================
+##  Additional validation of DNM candidates with parent Illumina BAM
+## ==========================================================================
 validate_dnmc_with_parent_bam() {
     echo "[parent-check] Validating DNM candidates against parent Illumina BAM"
 
@@ -1285,13 +1301,7 @@ SLURM_EOF
 
 # ===========================================================================
 ## CHAIN : Submit Parts 2b -> 3 -> 3b -> 4 as four Slurm jobs chained with
-##         afterok dependencies (mirrors the 6a submit pattern). Each link
-##         re-invokes THIS script with a single --part token, so every step
-##         can STILL be run by hand exactly as before.
-##
-##   Part 3 is run via the internal `3-inline` token so whatshap phasing runs
-##   IN the chained job (not as a nested submit) -- this is what makes the
-##   afterok dependency on 3b correct.
+##         afterok dependencies. 
 ## ==========================================================================
 
 _chain_common_args() {
@@ -2586,8 +2596,8 @@ validate_rephase_dnmc_with_hifi_reads() {
     # how set A treats LR validation as a hard filter on candidates.
     #
     # dnmc_readcheck.py wrote ${CHILD}_LR_validated_${LR_LABEL}.bed directly
-    # into REPHASE_ANALYSIS_DIR. We intersect the bcftools-filtered candidate
-    # TSV against the LR-validated positions so that
+    # into REPHASE_ANALYSIS_DIR. 
+    ## Here, we intersect the bcftools-filtered candidate TSV against the LR-validated positions so that
     #   ${PARENT}_${CHILD}_dnmc_rephase.tsv
     # contains ONLY LR-passing candidates (header preserved).
     # ----------------------------------------------------------------------
@@ -2981,7 +2991,7 @@ final_summary_with_rephase() {
 
 
 ##################################################
-# Main
+# THE MAIN POINT!!!!
 ##################################################
 
 
@@ -3045,7 +3055,7 @@ main() {
 
             # Gate: Part 2's output must actually be phased (FORMAT/PS present)
             # before we touch it. Works regardless of which phasing program
-            # produced it (whatshap, --external-phased-vcf, or hand-placed).
+            # produced it (whatshap, --external-phased-vcf, or hand-placed - hopefully
             echo "Checking that Part 2 produced a properly phased VCF (FORMAT/PS present)"
             if ! check_phased_vcf_has_ps; then
                 echo "[2b] Aborting: phased VCF check failed."
