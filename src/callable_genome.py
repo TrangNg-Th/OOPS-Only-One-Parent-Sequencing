@@ -107,9 +107,9 @@ df["pos"] = df["pos"].astype(int)
 # =============================================================================
 # Chromosome Exclusion (autosomes-only by default)
 # =============================================================================
-# Read from EXCLUDE_CHROMS env var (comma-separated). Defaults to "chrX,chrY".
+# Read from EXCLUDE_CHROMS env var (comma-separated). Defaults to "chrX,chrY,chrM".
 # Matching is case-insensitive and tolerant of "chr"/"chrom" prefixes so users
-# can pass chrX, chromX, X, etc. and they all match the same contig.
+# can pass chrX, chromX, X, etc
 _excl_raw = os.environ.get("EXCLUDE_CHROMS", "chrX,chrY,chrM")
 
 def _norm_chrom(name):
