@@ -46,6 +46,7 @@ about:
     candidate. Candidates are validated against long reads and weighed
     against a callable-genome estimate to produce a mutation rate.
     Requires a Slurm cluster.
-  license: TODO
+  license: MIT
+  license_file: LICENSE
 
 
