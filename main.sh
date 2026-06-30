@@ -10,7 +10,7 @@ export PS1=${PS1:-}
 
 
 usage() {
-cat << EOF
+cat << 'EOF'
 
 Only One Parent Sequencing (OOPS) — Mutation Call Pipeline
 ==========================================================
