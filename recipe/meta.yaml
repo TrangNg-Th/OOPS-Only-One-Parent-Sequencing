@@ -9,7 +9,7 @@ source:
   path: ..
 
 build:
-  number: 1 
+  number: 2
   noarch: generic ## conda-build auto-detects and runs build.sh by filename alone 
 
 requirements:
