@@ -33,7 +33,7 @@ test:
     # BAMs/VCFs, and project directories, so we don't try to *run* it here.
     - test -x "${PREFIX}/bin/oops"
     - bash -n "${PREFIX}/share/oops/main.sh"
-    - python -c "import pandas, numpy, scipy, pysam"
+    - python -c "import pandas, numpy, scipy, pysam, matplotlib"
 
 about:
   home: https://github.com/TrangNg-Th/OOPS-Only-One-Parent-Sequencing

@@ -149,7 +149,6 @@ EXAMPLES
   ./main.sh --part 2b --prj-dir /path/OOPS_Pacbio_10x_79_77 \\
   --sample-child NA12879 \\
   --sample-parent NA12877 \\
-  --source hifi_5x_NA12879_NA12878.txt \\
   --source ex_source_Pacbio_10x_79_77.txt \\
   --nv-quantile 0.5 --alt-read-count 2 --window 20000 --total-rd-ct-min 10
 
@@ -1422,7 +1421,7 @@ remerge_unphased-parent_phased-child_vcfs() {
     ls ${MM_DIR}/${SAMPLE_CHILD}.illumVCF_LRbam* 1>/dev/null 2>&1 && \
         mv -f ${MM_DIR}/${SAMPLE_CHILD}.illumVCF_LRbam* ${PHASED_VCF}/
 
-    local PARENT_VCF=${ILLUM_DIR}/${SAMPLE_PARENT}.CHM13.illumina.unphased.noPS.vcf.gz
+    local PARENT_VCF=${ILLUM_DIR}/${SAMPLE_PARENT}.${NAME_REFERENCE}.illumina.unphased.noPS.vcf.gz
     local CHILD_VCF=${PHASED_VCF}/${SAMPLE_CHILD}.illumVCF_LRbam.phased.${v}kb.vcf.gz
 
     # Freshness-aware indexing (rebuilds if missing OR older than the VCF).

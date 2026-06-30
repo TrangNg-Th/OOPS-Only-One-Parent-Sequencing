@@ -21,8 +21,7 @@ find "${INSTALL_DIR}/src" -name "*.py" -exec chmod +x {} \;
 find "${INSTALL_DIR}/src/slurm_scripts_helper" -name "*.slurm" -exec chmod +x {} \; 2>/dev/null || true
 
 # A thin wrapper so users get a plain `oops` command on PATH instead of
-# having to remember where conda put the real script. Resolves its own
-# location at runtime, so it survives the environment being moved/cloned.
+# having to remember where conda put the real script.
 mkdir -p "${PREFIX}/bin"
 cat > "${PREFIX}/bin/oops" <<'WRAPPER'
 #!/bin/bash
