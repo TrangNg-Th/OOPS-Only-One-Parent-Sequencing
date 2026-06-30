@@ -135,19 +135,28 @@ OPTIONS  (defaults in brackets)
 EXAMPLES
 ------------------------------------------------------------------
   # 0. Check configuration
-  ./main.sh --part 0 --prj-dir /path/OOPS_hifi_5x_NA12879_NA12878 \\
-    --sample-child NA12879 --sample-parent NA12878 \\
-    --source hifi_5x_NA12879_NA12878.txt
+  ./main.sh --part 0 --prj-dir /path/OOPS_Pacbio_10x_79_77 \\
+    --sample-child NA12879 --sample-parent NA12877 \\
+    --source ex_source_Pacbio_10x_79_77.txt
 
   # Run detection-to-rate as one chained submission
-  ./main.sh --part chain --prj-dir /path/OOPS_hifi_5x_NA12879_NA12878 \\
-    --sample-child NA12879 --sample-parent NA12878 \\
-    --source hifi_5x_NA12879_NA12878.txt \\
+  ./main.sh --part chain --prj-dir /path/OOPS_Pacbio_10x_79_77 \\
+    --sample-child NA12879 --sample-parent NA12877 \\
+    --source ex_source_Pacbio_10x_79_77.txt \\
     --nv-quantile 0.5 --alt-read-count 2 --window 20000 --total-rd-ct-min 10
 
   # Or one part at a time
-  ./main.sh --part 2b --prj-dir /path --sample-child NA12879 \\
-    --sample-parent NA12878 --source hifi_5x_NA12879_NA12878.txt
+  ./main.sh --part 2b --prj-dir /path/OOPS_Pacbio_10x_79_77 \\
+  --sample-child NA12879 \\
+  --sample-parent NA12877 \\
+  --source hifi_5x_NA12879_NA12878.txt \\
+  --source ex_source_Pacbio_10x_79_77.txt \\
+  --nv-quantile 0.5 --alt-read-count 2 --window 20000 --total-rd-ct-min 10
+
+  # Another exmaple
+  oops --part 0 --prj-dir /tmp/oops_smoketest \
+  --sample-child NA12879 --sample-parent NA12878 \
+  --source example_readtype-coverage_parent_child.txt --account dummy
 
 EOF
 exit 1

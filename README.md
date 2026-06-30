@@ -77,7 +77,17 @@ It defines `BAM_CHILD_URL`/`NAME_BAM_CHILD`/`NAME_BAMIDX_CHILD` (child long-read
 
 ## Quick start
 
-Run `--part 0` first to confirm paths resolve, then run detection. Two ways to drive the core (2b → 3 → 3b → 4):
+- Run `--part 0` first to check yoour project's path, and all the parameters involved. 
+
+- Part 1 downloads the child long-read BAM + index, the parent's Illumina BAM + index, the one joint Illumina VCF (genotypes for *both* samples), and the reference (then `faidx`).
+
+- There are two ways to run the pipeline:
+      - If you have **not phased** the child using long reads, you can run part 2 to phase the child via Whatshap.
+      - If you have **already phased** the child, you can skip part 2 and run part 2b to detect DNM candidates. Make sure that the phased VCF has `FORMAT/PS` and phased genotypes (`|` instead of `/`) for the child sample.
+
+            - Once you have the **phased VCF**, you can run part 2b to detect DNM candidates, then part 3 to locally rephase around candidates, then part 3b to refine DNM detection, and finally part 4 to estimate callable genome and mutation rate.
+            
+            - Part 2b ->  3-> 3b-> 4 can be run **chained** (recommended) or **one part at a time**. Both ways produce the same final outputs.
 
 **Chained (recommended):** one command submits all four as a Slurm dependency chain — each step waits for the previous to finish.
 
@@ -91,6 +101,7 @@ bash main.sh --part chain \
 ```
 
 Chain artifacts and per-step logs land in `<prj-dir>/<child>_phasedvcf/chain_2b_4/logs/`. Monitor with `squeue -u $USER`. (If a step fails, `afterok` cancels the downstream steps — that's expected.)
+
 
 **One part at a time:** same flags, just change `--part` (`0 → 1a → 1b → 1c → 2 → 2b → 3 → 3b → 4`). Every part still runs standalone.
 
@@ -118,9 +129,11 @@ Submits `build_hapl_<child>`: filters the child VCF to diploid sites, runs `what
 
 Either way, Part 2 — and again Part 2b, independently — checks the phased VCF for a non-missing `FORMAT/PS` and fails fast with a clear error if phasing didn't actually produce phase sets, instead of silently yielding zero candidates deep in Part 2b.
 
-### 2b — First DNM detection
+### 2b — First DNM detection (if you want to chain Parts 2b → 3 → 3b → 4, skip this and run `--part chain` instead)
 Merges phased child + unphased parent VCFs, keeps PS-tagged child SNPs, counts H0/H1 mismatches per block, flags blocks where exactly one haplotype has a single mismatch, and validates each candidate in the haplotagged long reads (ALT must sit on one haplotype, ≥ `--alt-read-count`, ≥ `--total-rd-ct-min` total).
 Outputs in `<child>_phasedvcf/mismatch_analysis/`: `*_mismatch.tsv`, `*_dnmc.bed/.tsv`, `<child>_LR_validated_dnmc.bed`, `<child>_dnmc_plusminus<W>kb.bed`.
+
+**This part is included in the `--part chain` flow**; you only need to run it standalone if you want to inspect the initial candidates before local rephasing.
 
 ### 3 — Local rephasing around candidates
 Submits a job that re-runs WhatShap in a ±`--window` bp region (default 20kb) around each candidate. Global phasing accumulates switch errors over distance; local rephasing gives a cleaner haplotype call near each site. A candidate that vanishes here was a phase-switch artifact.
@@ -129,12 +142,18 @@ This step always rephases with `whatshap phase` — it's not swappable via a fla
 
 - Region BED Part 3 outputs: `<prj-dir>/<child>_phasedvcf/mismatch_analysis/<child>_dnmc_plusminus<window-kb>kb.bed`
 
+**This part is included in the `--part chain` flow**; you only need to run it standalone if you want to inspect the initial candidates before local rephasing.
+
 ### 3b — Refined DNM detection
 Re-merges the locally rephased child VCF with the parent, re-extracts phased SNPs in the candidate windows, and re-counts with the same asymmetry logic — a confirmation pass. Survivors are promoted.
 Output: `<child>_phasedvcf/final_dnmc_<child>-from-<parent>.tsv`.
 
+**This part is included in the `--part chain` flow**; you only need to run it standalone if you want to inspect the initial candidates before local rephasing.
+
 ### 4 — Callable genome + mutation rate
 Estimates the denominator instead of using raw genome size: samples het SNPs from the same blocks, applies the **same** depth/GQ/long-read filters used for DNMs, and extrapolates.
+
+**This part is included in the `--part chain` flow**; you only need to run it standalone if you want to inspect the initial candidates before local rephasing.
 
 ```
 callable_genome = (SNPs_qualified / SNPs_sampled) × accessible_bases
@@ -211,3 +230,9 @@ src/
 - **Phase-switch errors** are the main false-positive source; Parts 5/6a mitigate but don't eliminate them.
 - At low long-read coverage, some candidates are genuinely unresolvable per site 
 - Validated on HiFi, ONT from one trio (NA12879/NA12878/NA12877).Multi-pedigree validation are ongoing.
+
+
+---
+### TODOs
+- Update pipeline to reproduce work for PacBio Hifi on trio NA12878/NA12879/NA12877
+- 

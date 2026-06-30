@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs inside conda-build's isolated build environment.
-# $SRC_DIR  = a copy of the repo (because meta.yaml's source.path is "..")
+# $SRC_DIR  = a copy of the repo 
 # $PREFIX   = the environment being built into
 set -euo pipefail
 
