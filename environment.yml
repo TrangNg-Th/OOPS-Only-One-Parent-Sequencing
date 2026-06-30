@@ -8,7 +8,7 @@ dependencies:
   - bcftools>=1.17
   - samtools>=1.17
   - tabix
-  - whatshap
+  - whatshap  ## May be removed in the future, but currently used for phasing
   - pandas
   - numpy
   - scipy

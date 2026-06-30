@@ -23,14 +23,17 @@ Standard DNM calling needs both parents sequenced. OOPS doesn't. It uses the **c
 **Dependencies:** `bcftools`, `samtools`, `tabix`, `whatshap`, `wget`, `pysam`, `pandas`, `numpy`, `scipy`, `matplotlib`, `aws-cli` (S3), SLURM.
 
 ```bash
-git clone https://github.com/your-org/oops && cd oops
-conda env create -f environment.yml
-conda activate oops
+git clone https://github.com/TrangNg-Th/OOPS-Only-One-Parent-Sequencing && cd OOPS-Only-One-Parent-Sequencing
+
+## If you want to build a conda environment from scratch
+conda activate build-env
+conda-build recipe/ -c conda-forge -c bioconda
+
 ```
 
-Prefer an installable package over cloning? See `recipe/` — a `conda-build` recipe that installs the pipeline as an `oops` command (`conda build recipe/`, then `conda install --use-local oops-dnm`).
 
-**Already have an environment named `oops` for something else?** Every phasing/haplotagging step in `main.sh` runs `conda activate "${CONDA_ENV_NAME}"` internally (default `oops`) before calling `whatshap`/`bcftools`/`samtools`. Pass `--conda-env <name>` to point it at whatever you actually named the environment that has these tools installed — e.g. `--conda-env whatshap-env` if that name is already taken by an unrelated environment on your system and you installed this pipeline's dependencies under a different name.
+
+**Already have an environment named `oops` for something else?** Every phasing/haplotagging step in `main.sh` runs `conda activate "${CONDA_ENV_NAME}"` internally (default `oops`) before calling `whatshap`/`bcftools`/`samtools`. Pass `--conda-env <name>` to point it at whatever you actually named the environment that has these tools installed. For ex: `--conda-env oops`
 
 ---
 
@@ -68,7 +71,7 @@ cp data/example_readtype-coverage_parent_child.txt \
 
 It defines `BAM_CHILD_URL`/`NAME_BAM_CHILD`/`NAME_BAMIDX_CHILD` (child long-read BAM), `BAM_PARENT_URL`/`NAME_BAM_PARENT`/`NAME_BAMIDX_PARENT` (parent Illumina BAM), `VCF_PATH`/`NAME_VCF_FILE` (the one joint Illumina VCF covering both samples), and `REFERENCE_PATH`/`NAME_REFERENCE_FILE`/`NAME_REFERENCE`. Without `--source`, the example file is used.
 
-**Slurm account / partition:** every job `main.sh` submits bills `-A r00379` by default — that's the original author's HPC allocation and is almost certainly wrong for you. Pass `--account <your-account>` (required on most clusters) and `--partition <your-partition>` (optional; omit to let Slurm pick the cluster's default) on every invocation, e.g. `--account myalloc --partition general`. This pipeline assumes a Slurm cluster throughout — there is no non-Slurm execution path.
+**Slurm account / partition:** every job `main.sh` submits bills `-A r00379` by default — it's the our HPC allocation but is certainly not for you. Pass `--account <your-account>` (required on most clusters) and `--partition <your-partition>` (this is optional; omit to let Slurm pick the cluster's default) on every invocation.
 
 ---
 
@@ -100,7 +103,7 @@ Run order: `0 → 1a → 1b → 1c → 2 → 2b → 3 → 3b → 4`. Parts 5 and
 ### 0 — Configuration check
 Prints the resolved parameters and dependencies; submits nothing. Verify the child BAM, VCF, and reference paths before continuing.
 
-### 1a / 1b / 1c — Data prep
+### 1a / 1b / 1c — Data prep - optional
 - **1a** downloads the child long-read BAM + index, the parent's Illumina BAM + index, the one joint Illumina VCF (genotypes for *both* samples), and the reference (then `faidx`).
 - **1b** strips any existing `HP` tags from the child's long-read BAM, sorts, indexes → `<child>_clean.bam`. (The parent's Illumina BAM is left as downloaded — it's only read directly, never modified.)
 - **1c** splits the joint VCF into the two per-sample VCFs it already contains, removes `PS` tags, indexes → per-sample `*.unphased.noPS.vcf.gz`. No separate child Illumina BAM is downloaded or needed — child genotype/depth/quality data comes entirely from this VCF.
@@ -111,19 +114,20 @@ Each submits a short Slurm job.
 Submits `build_hapl_<child>`: filters the child VCF to diploid sites, runs `whatshap phase` (producing PS-tagged blocks), then `whatshap haplotag` to stamp every read with `HP1`/`HP2` → `<child>_HP.bam`.
 *Check `*.stats.tsv`: at 50× HiFi expect block N50 >100 kb and >85% of hets phased.*
 
-**Using a different phasing program:** pass `--external-phased-vcf <FILE>` to skip `whatshap phase` and use a VCF already phased by another tool instead (the file must carry `FORMAT/PS` and phased `|` genotypes). `whatshap` itself is not optional — only the initial phase call is swappable. Haplotagging and phase-block stats always run via `whatshap` afterward regardless of this flag, since `whatshap haplotag`/`stats` accept any correctly phased VCF no matter which tool produced it. Either way, Part 2 — and again Part 2b, independently — checks the phased VCF for a non-missing `FORMAT/PS` and fails fast with a clear error if phasing didn't actually produce phase sets, instead of silently yielding zero candidates deep in Part 2b.
+**If you're using a different phasing program:** pass `--external-phased-vcf <FILE>` to skip `whatshap phase` and use a VCF already phased by another tool instead (**WARNING:** your vcf file must carry `FORMAT/PS` and phased `|` genotypes). However, `whatshap` itself is not optional — only the initial phase call is swappable. Haplotagging and phase-block stats always run via `whatshap` afterward regardless of this flag, since `whatshap haplotag`/`stats` accept any correctly phased VCF no matter which tool produced it. 
+
+Either way, Part 2 — and again Part 2b, independently — checks the phased VCF for a non-missing `FORMAT/PS` and fails fast with a clear error if phasing didn't actually produce phase sets, instead of silently yielding zero candidates deep in Part 2b.
 
 ### 2b — First DNM detection
 Merges phased child + unphased parent VCFs, keeps PS-tagged child SNPs, counts H0/H1 mismatches per block, flags blocks where exactly one haplotype has a single mismatch, and validates each candidate in the haplotagged long reads (ALT must sit on one haplotype, ≥ `--alt-read-count`, ≥ `--total-rd-ct-min` total).
 Outputs in `<child>_phasedvcf/mismatch_analysis/`: `*_mismatch.tsv`, `*_dnmc.bed/.tsv`, `<child>_LR_validated_dnmc.bed`, `<child>_dnmc_plusminus<W>kb.bed`.
 
 ### 3 — Local rephasing around candidates
-Submits a job that re-runs WhatShap in a ±`--window` bp region around each candidate. Global phasing accumulates switch errors over distance; local rephasing gives a cleaner haplotype call near each site. A candidate that vanishes here was a phase-switch artifact.
+Submits a job that re-runs WhatShap in a ±`--window` bp region (default 20kb) around each candidate. Global phasing accumulates switch errors over distance; local rephasing gives a cleaner haplotype call near each site. A candidate that vanishes here was a phase-switch artifact.
 
 This step always rephases with `whatshap phase` — it's not swappable via a flag. If you'd rather phase these windows with your own program, let Part 3 run once to lay out its inputs, then before running Part 3b (or `--part chain`), replace its output file with your own phased VCF for the same regions (must carry `FORMAT/PS` and phased genotypes):
 
-- Region BED Part 3 phases: `<prj-dir>/<child>_phasedvcf/mismatch_analysis/<child>_dnmc_plusminus<window-kb>kb.bed`
-- File to replace: `<prj-dir>/<child>_phasedvcf/mismatch_analysis/<child>.illumVCF_LRbam.phased.<window-kb>kb.vcf.gz`
+- Region BED Part 3 outputs: `<prj-dir>/<child>_phasedvcf/mismatch_analysis/<child>_dnmc_plusminus<window-kb>kb.bed`
 
 ### 3b — Refined DNM detection
 Re-merges the locally rephased child VCF with the parent, re-extracts phased SNPs in the candidate windows, and re-counts with the same asymmetry logic — a confirmation pass. Survivors are promoted.
@@ -205,5 +209,5 @@ src/
 - **Germline only** — somatic mutations are out of scope.
 - The sequenced parent should be **homozygous reference** at true DNM sites; heterozygous parent sites are filtered but reduce sensitivity.
 - **Phase-switch errors** are the main false-positive source; Parts 5/6a mitigate but don't eliminate them.
-- At low long-read coverage, some candidates are genuinely unresolvable per site — report the rate with its uncertainty rather than over-tuning thresholds.
-- Validated on HiFi from one trio (NA12879/NA12878/NA12877); ONT and multi-pedigree validation are ongoing.
+- At low long-read coverage, some candidates are genuinely unresolvable per site 
+- Validated on HiFi, ONT from one trio (NA12879/NA12878/NA12877).Multi-pedigree validation are ongoing.

@@ -9,14 +9,8 @@ source:
   path: ..
 
 build:
-  number: 0
-  # No compiled code and no Python-version-specific logic -- this is just
-  # shell + Python scripts copied into place, so it builds once and runs
-  # on any platform/Python version that satisfies the run requirements.
-  noarch: generic
-  # conda-build auto-detects and runs build.sh by filename alone -- do not
-  # also set build/script here, or it errors with "Found a build.sh script
-  # and a build/script section inside meta.yaml."
+  number: 1 
+  noarch: generic ## conda-build auto-detects and runs build.sh by filename alone 
 
 requirements:
   run:
@@ -48,8 +42,8 @@ about:
   description: |
     OOPS (Only One Parent Sequencing) phases a child's long reads into two
     haplotypes, compares each haplotype against the one sequenced parent's
-    genotypes, and flags single-haplotype mismatches as de novo mutation
-    candidates. Candidates are validated against long reads and weighed
+    genotypes, and flags haplotype single mismatch as de novo mutation
+    candidate. Candidates are validated against long reads and weighed
     against a callable-genome estimate to produce a mutation rate.
     Requires a Slurm cluster.
   license: TODO
