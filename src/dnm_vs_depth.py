@@ -118,7 +118,7 @@ def start_band(ax):
     ax.axvspan(xc - 0.18, xc + 0.18, color=C_START, alpha=0.55, zorder=0)
 
 # ---- Panel 1: calls ----
-start_band(ax1)
+# start_band(ax1)
 ax1.plot(xpos[m_dad], CALLS_DAD[m_dad], "-o", color=C_DAD, lw=2, ms=7,
          label="Paternal", zorder=3)
 ax1.plot(xpos[m_mom], CALLS_MOM[m_mom], "-s", color=C_MOM, lw=2, ms=7,
@@ -130,7 +130,7 @@ ax1.set_title(f"De novo mutation calling vs {DATA_TYPE} read depth",
               fontsize=13, fontweight="medium", loc="left", pad=10)
 
 # ---- Panel 2: false positives ----
-start_band(ax2)
+# start_band(ax2)
 mfp_dad = ~np.isnan(FALSE_POS_DAD)
 mfp_mom = ~np.isnan(FALSE_POS_MOM)
 ax2.plot(xpos[mfp_dad], FALSE_POS_DAD[mfp_dad], "-o", color=C_DAD, lw=2, ms=7,
@@ -142,7 +142,7 @@ ax2.legend(frameon=False, loc="upper right", fontsize=10)
 ax2.set_ylim(bottom=0)
 
 # ---- Panel 3: rates, per parent, each with ground truth ----
-start_band(ax3)
+# start_band(ax3)
 
 # ground-truth lines, matching parent colors
 ax3.axhline(GROUND_TRUTH_RATE_DAD, color=C_DAD, lw=2, ls="--", zorder=2,
@@ -166,14 +166,14 @@ ax3.set_xticklabels([f"{int(d)}x" for d in DEPTHS])
 ax3.set_xlabel("Read depth (coverage)")
 
 xc = np.interp(START_DEPTH, DEPTHS, xpos)
-ax1.annotate("experiment\nstart (10x)", xy=(xc, ax1.get_ylim()[1]),
-             xytext=(xc + 0.25, ax1.get_ylim()[1] * 0.92),
-             fontsize=9, color="#854F0B", ha="left", va="top")
+# ax1.annotate("experiment\nstart (10x)", xy=(xc, ax1.get_ylim()[1]),
+            #  xytext=(xc + 0.25, ax1.get_ylim()[1] * 0.92),
+            #  fontsize=9, color="#854F0B", ha="left", va="top")
 
-for ax in (ax1, ax2, ax3):
-    ax.margins(x=0.04)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+# for ax in (ax1, ax2, ax3):
+#     ax.margins(x=0.04)
+#     ax.spines["top"].set_visible(False)
+#     ax.spines["right"].set_visible(False)
 
 # ===========================================================================
 # Save
