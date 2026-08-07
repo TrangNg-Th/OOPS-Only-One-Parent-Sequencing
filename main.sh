@@ -809,12 +809,18 @@ EOF
 ## ==========================================================================
 dnm_candidates_are_empty() {
     local MM_DIR="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf/mismatch_analysis"
+    # The window BED lives in mismatch_analysis/ right after Part 2b, but Part
+    # 3b's clean_up() moves it into mismatch_analysis/sliced/. Check BOTH so
+    # Part 4 does not falsely report "0 candidates" simply because 3b already
+    # relocated the file. Candidates are present if a non-empty window BED
+    # exists in EITHER location.
     local WIN_BED="${MM_DIR}/${SAMPLE_CHILD}_dnmc_plusminus${v}kb.bed"
-    # Empty if the window BED is missing or has no data rows.
-    if [[ ! -s "${WIN_BED}" ]]; then
-        return 0
+    local WIN_BED_SLICED="${MM_DIR}/sliced/${SAMPLE_CHILD}_dnmc_plusminus${v}kb.bed"
+    if [[ -s "${WIN_BED}" || -s "${WIN_BED_SLICED}" ]]; then
+        return 1
     fi
-    return 1
+    # Empty if the window BED is missing or has no data rows in both locations.
+    return 0
 }
 
 # Still write a final_dnmc file that has the standard header but ZERO data rows, so

@@ -19,8 +19,10 @@ requirements:
     - samtools >=1.17
     - tabix
     - whatshap
-    - pandas
-    - numpy
+    - pandas >=2.2,<2.3   # pinned: pandas changed GroupBy.apply grouping-column
+                          # behavior across releases (callable_genome.py now uses
+                          # GroupBy.sample and is version-robust; pin for repro).
+    - numpy >=1.26,<2.3
     - scipy
     - matplotlib-base
     - pysam
