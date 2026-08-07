@@ -9,8 +9,11 @@ dependencies:
   - samtools>=1.17
   - tabix
   - whatshap  ## May be removed in the future, but currently used for phasing
-  - pandas
-  - numpy
+  - pandas >=2.2,<2.3   ## pinned: pandas changed GroupBy.apply grouping-column
+                        ## behavior across releases; callable_genome.py now uses
+                        ## GroupBy.sample and is version-robust, but pin for
+                        ## reproducible builds.
+  - numpy >=1.26,<2.3
   - scipy
   - matplotlib-base
   - pysam

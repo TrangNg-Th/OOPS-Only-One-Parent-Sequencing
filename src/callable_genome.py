@@ -269,10 +269,14 @@ df = df[
 # =============================================================================
 RANDOM_SEED = 42
 
+# NOTE: use GroupBy.sample (not .apply(lambda x: x.sample(...))). Newer pandas
+# excludes the grouping column ("PS_child") from the result of .apply(), which
+# later crashes the consistency check with KeyError: 'PS_child'. GroupBy.sample
+# keeps every column and is stable across pandas versions. Each PS block has >=1
+# row by construction, so n=1 per group reproduces the old logic exactly.
 sampled_df = (
-    df.groupby("PS_child", group_keys=False)
-      .apply(lambda x: x.sample(1, random_state=RANDOM_SEED)
-             if len(x) > 0 else x)
+    df.groupby("PS_child", group_keys=False, sort=False)
+      .sample(n=1, random_state=RANDOM_SEED)
       .reset_index(drop=True)
 )
 
