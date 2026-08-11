@@ -65,7 +65,9 @@ OPTIONS  (defaults in brackets)
     --cpus <N>              CPUs for phasing jobs           [8]
     --time <HH:MM:SS>       Slurm wall time                 [10:00:00]
     --reference <FILE>      Reference FASTA                 [<prj-dir>/reference/chm13v2.0_maskedY_rCRS.fa]
-    --source <FILE>         Source config under data/       [example_readtype-coverage_parent_child.txt]
+    --source <FILE>         Source config. Accepts an absolute path, a relative
+                            path, or a bare filename (bare names are looked up in
+                            the package's data/ dir).                [example_readtype-coverage_parent_child.txt]
     --account <NAME>        Slurm account to bill (-A)      [r00379]
                              Default is the original author's HPC allocation
                              -- almost certainly wrong for you. Set this to
@@ -285,7 +287,18 @@ DEPENDENCIES_FILE="${WORKING_DIR}/environment.yml"
 # Check if the argument --source is given, if not, use default source file
 ##############################################
 if [[ -n "${SOURCE:-}" ]]; then
-    SOURCE_FILE="${WORKING_DIR}/data/${SOURCE}"
+    if [[ "${SOURCE}" == /* && -f "${SOURCE}" ]]; then
+        # Absolute path to a source file anywhere on disk -- use as-is.
+        SOURCE_FILE="${SOURCE}"
+    elif [[ -f "${SOURCE}" ]]; then
+        # Relative path to an existing file (relative to the current working
+        # directory) -- resolve it to an absolute path so chained Slurm
+        # sub-jobs, which run from a different CWD, still find it.
+        SOURCE_FILE="$(cd "$(dirname "${SOURCE}")" && pwd)/$(basename "${SOURCE}")"
+    else
+        # Bare filename: look in the package's bundled data/ dir (back-compat).
+        SOURCE_FILE="${WORKING_DIR}/data/${SOURCE}"
+    fi
 else
     SOURCE_FILE="${WORKING_DIR}/data/example_readtype-coverage_parent_child.txt"
 fi
@@ -294,7 +307,12 @@ fi
 
 ## Read the source file
 if [[ ! -f "${SOURCE_FILE}" ]]; then
-    echo "ERROR: ${SOURCE} not found at ${SOURCE_FILE}"
+    echo "ERROR: source config '${SOURCE:-<default>}' not found."
+    echo "       Tried to resolve it to: ${SOURCE_FILE}"
+    echo "       You can pass --source in any of these forms:"
+    echo "         * an absolute path : --source /path/to/my_source.txt"
+    echo "         * a relative path  : --source ./configs/my_source.txt"
+    echo "         * a bare filename  : --source my_source.txt   (looked up in ${WORKING_DIR}/data/)"
     exit 1
 fi
 
@@ -1323,7 +1341,7 @@ _chain_common_args() {
 "--prj-dir ${PRJ_DIR} \
 --sample-child ${SAMPLE_CHILD} \
 --sample-parent ${SAMPLE_PARENT} \
---source $(basename "${SOURCE_FILE}") \
+--source ${SOURCE_FILE} \
 --reference ${REF} \
 --cpus ${CPUS} \
 --time ${TIME} \
@@ -2202,7 +2220,7 @@ _rephase_common_args() {
 "--prj-dir ${PRJ_DIR} \
 --sample-child ${SAMPLE_CHILD} \
 --sample-parent ${SAMPLE_PARENT} \
---source $(basename "${SOURCE_FILE}") \
+--source ${SOURCE_FILE} \
 --min-rdepth ${MIN_RDEPTH} \
 --max-rdepth ${MAX_RDEPTH} \
 --gt-qual ${GT_QUAL} \
