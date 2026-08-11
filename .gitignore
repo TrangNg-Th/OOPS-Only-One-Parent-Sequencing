@@ -4,3 +4,7 @@ data/source*
 data/done/*
 main_*
 src/old/*
+*docx
+*pptx
+*pdf 
+*tmp
