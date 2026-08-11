@@ -488,8 +488,8 @@ generate_bam_preprocessing_job() {
 #SBATCH --mem=8G
 #SBATCH -A ${ACCOUNT}
 ${SBATCH_PARTITION_LINE}
-#SBATCH -o slurm_output/prepr_bam_.%j.txt
-#SBATCH -e slurm_output/prepr_bam_.%j_.err
+#SBATCH -o slurm_output/prepr_bam_%j.txt
+#SBATCH -e slurm_output/prepr_bam_%j.err
 
 set -euo pipefail
 if command -v module &> /dev/null; then
@@ -573,8 +573,8 @@ generate_vcf_preprocessing_job() {
 #SBATCH --mem=8G
 #SBATCH -A ${ACCOUNT}
 ${SBATCH_PARTITION_LINE}
-#SBATCH -o slurm_output/preprocess_vcf_.%j.txt
-#SBATCH -e slurm_output/preprocess_vcf_.%j_.err
+#SBATCH -o slurm_output/preprocess_vcf_%j.txt
+#SBATCH -e slurm_output/preprocess_vcf_%j.err
 
 
 set -euo pipefail
