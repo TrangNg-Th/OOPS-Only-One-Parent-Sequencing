@@ -1,4 +1,4 @@
-{% set version = "0.1.0" %}
+{% set version = "0.2.0" %}
 
 package:
   name: oops-dnm
@@ -9,8 +9,9 @@ source:
   path: ..
 
 build:
-  number: 2
-  noarch: generic ## conda-build auto-detects and runs build.sh by filename alone 
+  number: 0    ## reset to 0 on every version bump; increment only for rebuilds
+               ## of the SAME version (e.g. recipe-only changes)
+  noarch: generic ## conda-build auto-detects and runs build.sh by filename alone
 
 requirements:
   run:
