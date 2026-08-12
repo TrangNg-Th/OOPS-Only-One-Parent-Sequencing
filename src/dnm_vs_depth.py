@@ -36,8 +36,8 @@ FALSE_POS_DAD = np.array([0, 0, 0, 0, 0])
 FALSE_POS_MOM = np.array([0, 0, 0, 0, 0])
 
 # --- Panel 3: estimated mutation rate, by parent (per bp/gen) ---
-RATE_EST_DAD = np.array([1.658423e-08, 1.28e-8, 1.7e-8, 1.28e-8, 1.50e-8])
-RATE_EST_MOM = np.array([5.894931e-09, 0.31e-8, 0.38e-8, 0.28e-8, 0.28e-08])
+RATE_EST_DAD = np.array([1.658423, 1.28, 1.7, 1.28, 1.50])
+RATE_EST_MOM = np.array([0.5894931, 0.31, 0.38, 0.28, 0.28])
 
 
 # Callable / accessible genome size per depth, PER PARENT (drives Poisson band).
@@ -47,8 +47,8 @@ RATE_EST_MOM = np.array([5.894931e-09, 0.31e-8, 0.38e-8, 0.28e-8, 0.28e-08])
 # CALLABLE_MOM = np.array([1.40e8, 1.90e8, 2.60e8, np.nan, np.nan])
 
 # --- Ground truth, per parent ---
-GROUND_TRUTH_RATE_DAD = 1.54e-8
-GROUND_TRUTH_RATE_MOM = 0.37e-8
+GROUND_TRUTH_RATE_DAD = 1.54
+GROUND_TRUTH_RATE_MOM = 0.37
 
 CONF = 0.95
 DATA_TYPE = "PacBio HiFi"   # for title only
@@ -153,8 +153,8 @@ ax1.plot(xpos[m_mom], CALLS_MOM[m_mom], "-o", color=C_MOM, lw=2, ms=5,
          label="Maternal", zorder=3)
 ax1.set_yticks(np.arange(0, max(CALLS_DAD) + 5, 2))
 ax1.set_ylabel("De novo mutations")
-ax1.legend(frameon=False, loc="upper right", fontsize=9)
-ax1.set_title(f"A", fontsize=13, fontweight="bold", loc="left", pad=10)
+ax1.legend(frameon=False, loc="upper left", fontsize=9)
+ax1.set_title(f"(a)", fontsize=13, fontweight="bold", loc="left", pad=5)
 
 # ---- Panel 2: false positives ----
 # start_band(ax2)
@@ -183,7 +183,7 @@ ax3.plot(xpos[mr_dad], RATE_EST_DAD[mr_dad], "-s", color=C_DAD, lw=2, ms=5,
 ax3.plot(xpos[mr_mom], RATE_EST_MOM[mr_mom], "-o", color=C_MOM, lw=2, ms=5,
          zorder=3, label="OOPS estimate (maternal)")
 
-ax3.set_ylabel("Mutation rate (per bp/gen)")
+ax3.set_ylabel(r"Mutation rate ($\times$ e$^{-8}$ per bp/gen)")
 ax3.set_ylim(bottom=0)
 ax3.legend(frameon=False, loc="best", fontsize=9)
 
@@ -191,9 +191,9 @@ ax3.legend(frameon=False, loc="best", fontsize=9)
 ax3.set_xticks(xpos)
 ax3.set_xticklabels([f"{int(d)}x" for d in DEPTHS])
 ax3.set_xlabel("Read depth")
-ax3.set_title(f"B", fontsize=13, fontweight="bold", loc="left", pad=20)
+ax3.set_title(f"(b)", fontsize=13, fontweight="bold", loc="left", pad=5)
 
-xc = np.interp(START_DEPTH, DEPTHS, xpos)
+# xc = np.interp(START_DEPTH, DEPTHS, xpos)
 # ax1.annotate("experiment\nstart (10x)", xy=(xc, ax1.get_ylim()[1]),
             #  xytext=(xc + 0.25, ax1.get_ylim()[1] * 0.92),
             #  fontsize=9, color="#854F0B", ha="left", va="top")
