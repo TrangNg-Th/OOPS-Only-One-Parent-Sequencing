@@ -18,9 +18,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import chi2
 
+
+
 # ===========================================================================
-# DATA  -- fill these in.  All arrays must line up with DEPTHS, same length.
-#          Use np.nan for any (depth, parent) you haven't run yet.
 # ===========================================================================
 
 DEPTHS = np.array([5, 7, 10, 15, 37])              # x-axis (coverage)
@@ -41,8 +41,7 @@ RATE_EST_MOM = np.array([5.894931e-09, 0.31e-8, 0.38e-8, 0.28e-8, 0.28e-08])
 
 
 # Callable / accessible genome size per depth, PER PARENT (drives Poisson band).
-# (From your pipeline's "Callable genome size" line for each parent run.)
-# >>> PLACEHOLDER NUMBERS -- replace with your real per-parent values <<<
+
 # CALLABLE_DAD = np.array([1.50e8, 2.00e8, 2.75e8, 3.20e8, 4.00e8])
 # CALLABLE_MOM = np.array([1.40e8, 1.90e8, 2.60e8, np.nan, np.nan])
 
@@ -92,8 +91,9 @@ def rate_band(calls, callable_genome, conf=0.95):
 # Plot
 # ===========================================================================
 plt.rcParams.update({
-    "font.family": "DejaVu Sans",
-    "font.size": 11,
+    "font.family": 'sans-serif',
+    'font.sans-serif': ['Helvetica', 'Arial'],
+    "font.size": 10,
     "axes.edgecolor": "#888780",
     "axes.linewidth": 0.8,
     "axes.grid": True,
@@ -102,6 +102,9 @@ plt.rcParams.update({
     "grid.alpha": 0.6,
 })
 
+
+# plt.rcParams['font.family'] = 'sans-serif'
+# plt.rcParams['font.sans-serif'] = ['Helvetica', 'Arial', 'DejaVu Sans']
 fig, (ax1, ax2, ax3) = plt.subplots(
     3, 1, figsize=(8.5, 10), sharex=True,
     gridspec_kw={"height_ratios": [1.1, 0.8, 1.1], "hspace": 0.12},
@@ -118,42 +121,42 @@ def start_band(ax):
     ax.axvspan(xc - 0.18, xc + 0.18, color=C_START, alpha=0.55, zorder=0)
 
 # ---- Panel 1: calls ----
-start_band(ax1)
-ax1.plot(xpos[m_dad], CALLS_DAD[m_dad], "-o", color=C_DAD, lw=2, ms=7,
+# start_band(ax1)
+ax1.plot(xpos[m_dad], CALLS_DAD[m_dad], "-o", color=C_DAD, lw=2, ms=5,
          label="Paternal", zorder=3)
-ax1.plot(xpos[m_mom], CALLS_MOM[m_mom], "-s", color=C_MOM, lw=2, ms=7,
+ax1.plot(xpos[m_mom], CALLS_MOM[m_mom], "-o", color=C_MOM, lw=2, ms=5,
          label="Maternal", zorder=3)
 ax1.set_yticks(np.arange(0, max(CALLS_DAD) + 5, 2))
 ax1.set_ylabel("De novo calls")
-ax1.legend(frameon=False, loc="upper left", fontsize=10)
+ax1.legend(frameon=False, loc="upper right", fontsize=10)
 ax1.set_title(f"De novo mutation calling vs {DATA_TYPE} read depth",
               fontsize=13, fontweight="medium", loc="left", pad=10)
 
 # ---- Panel 2: false positives ----
-start_band(ax2)
+# start_band(ax2)
 mfp_dad = ~np.isnan(FALSE_POS_DAD)
 mfp_mom = ~np.isnan(FALSE_POS_MOM)
-ax2.plot(xpos[mfp_dad], FALSE_POS_DAD[mfp_dad], "-o", color=C_DAD, lw=2, ms=7,
+ax2.plot(xpos[mfp_dad], FALSE_POS_DAD[mfp_dad], "-o", color=C_DAD, lw=2, ms=5,
          label="False positives (dad)", zorder=3)
-ax2.plot(xpos[mfp_mom], FALSE_POS_MOM[mfp_mom], "-s", color=C_MOM, lw=2, ms=7,
+ax2.plot(xpos[mfp_mom], FALSE_POS_MOM[mfp_mom], "-o", color=C_MOM, lw=2, ms=5,
          label="False positives (mom)", zorder=3)
 ax2.set_ylabel("False positives")
 ax2.legend(frameon=False, loc="upper right", fontsize=10)
 ax2.set_ylim(bottom=0)
 
 # ---- Panel 3: rates, per parent, each with ground truth ----
-start_band(ax3)
+# start_band(ax3)
 
 # ground-truth lines, matching parent colors
-ax3.axhline(GROUND_TRUTH_RATE_DAD, color=C_DAD, lw=2, ls="--", zorder=2,
+ax3.axhline(GROUND_TRUTH_RATE_DAD, color=C_DAD, lw=1, ls="--", zorder=2,
             label="Ground truth (dad)")
-ax3.axhline(GROUND_TRUTH_RATE_MOM, color=C_MOM, lw=2, ls="--", zorder=2,
+ax3.axhline(GROUND_TRUTH_RATE_MOM, color=C_MOM, lw=1, ls="--", zorder=2,
             label="Ground truth (mom)")
 
 # estimated rate lines
-ax3.plot(xpos[mr_dad], RATE_EST_DAD[mr_dad], "-o", color=C_DAD, lw=2, ms=7,
+ax3.plot(xpos[mr_dad], RATE_EST_DAD[mr_dad], "-o", color=C_DAD, lw=2, ms=5,
          zorder=3, label="Estimated rate (dad)")
-ax3.plot(xpos[mr_mom], RATE_EST_MOM[mr_mom], "-s", color=C_MOM, lw=2, ms=7,
+ax3.plot(xpos[mr_mom], RATE_EST_MOM[mr_mom], "-o", color=C_MOM, lw=2, ms=5,
          zorder=3, label="Estimated rate (mom)")
 
 ax3.set_ylabel("Mutation rate (per bp/gen)")
@@ -166,9 +169,9 @@ ax3.set_xticklabels([f"{int(d)}x" for d in DEPTHS])
 ax3.set_xlabel("Read depth (coverage)")
 
 xc = np.interp(START_DEPTH, DEPTHS, xpos)
-ax1.annotate("experiment\nstart (10x)", xy=(xc, ax1.get_ylim()[1]),
-             xytext=(xc + 0.25, ax1.get_ylim()[1] * 0.92),
-             fontsize=9, color="#854F0B", ha="left", va="top")
+# ax1.annotate("experiment\nstart (10x)", xy=(xc, ax1.get_ylim()[1]),
+#              xytext=(xc + 0.25, ax1.get_ylim()[1] * 0.92),
+#              fontsize=9, color="#854F0B", ha="left", va="top")
 
 # for ax in (ax1, ax2, ax3):
 #     ax.margins(x=0.04)
