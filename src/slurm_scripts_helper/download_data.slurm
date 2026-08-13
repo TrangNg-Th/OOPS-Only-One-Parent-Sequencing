@@ -34,11 +34,20 @@ NAME_VCF_FILE="CEPH1463.CHM13.illumina-dragen.oa.vcf.gz"
 
 # BAM lists (FULL object names; one entry per file) -------------------
 LONGREAD_BAMS=(
-    "NA12879.CHM13.haplotagged.downsampled_27pc.bam"
+    "NA12882.CHM13.haplotagged.bam"
+    "200082.CHM13.haplotagged.bam"
+    "200084.CHM13.haplotagged.bam"
+    "NA12877.CHM13.haplotagged.bam"
+    "NA12878.CHM13.haplotagged.bam"
+
 )
 
 ILLUMINA_BAMS=(
-    "NA12877.illumina.bam"
+    "2216.v4.2.4.t2tchm13.bam"
+    "2281.v4.2.4.t2tchm13.bam"
+    "2280.v4.2.4.t2tchm13.bam"
+    "2214.v4.2.4.t2tchm13.bam"
+    "2213.v4.2.4.t2tchm13.bam"
 )
 
 
