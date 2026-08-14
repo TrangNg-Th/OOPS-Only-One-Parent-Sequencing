@@ -37,7 +37,7 @@ LONGREAD_BAMS=(
 ## Change the percentage of sampling by changing the value.
 ## For example, 10 -> 1.10 means 10% of the reads are kept,
 ## and 50 -> 1.50 means 50% of the reads are kept.
-SAMPLE_FRACTIONS=(5)  # 5 = 5%
+SAMPLE_FRACTIONS=(27)  # 5 = 5%
 
 # Threads for samtools -- should match --cpus-per-task above
 THREADS=8
