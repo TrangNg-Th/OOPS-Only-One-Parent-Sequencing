@@ -1058,6 +1058,7 @@ count_shared_alleles_per_PS_block() {
   
   echo " Counting alleles per haplotype block"
   conda activate "${CONDA_ENV_NAME}"
+  EXCLUDE_CHROMS="${EXCLUDE_CHROMS}" \
   python ${WORKING_DIR}/src/count_mismatches.py \
     ${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv \
     ${MISMATCH_ANALYSIS} \
@@ -1398,7 +1399,10 @@ _chain_common_args() {
 --total-rd-ct-min ${TOTAL_READ_COUNT_MIN} \
 --window_rephase ${WINDOW_REPHASE} \
 --threshold_rephase ${THRESHOLD_REPHASE} \
---conda-env ${CONDA_ENV_NAME}"
+--conda-env ${CONDA_ENV_NAME} \
+--max-parent-ad ${MAX_PARENT_AD} \
+--cluster-window ${CLUSTER_WINDOW} \
+--min-homopolymer ${MIN_HOMOPOLYMER}"
 }
 
 _chain_write_step_slurm() {
@@ -1554,6 +1558,7 @@ recount_shared_alleles_per_PS_block() {
   echo "Recounting mismatches in PS blocks"
   
   conda activate "${CONDA_ENV_NAME}"
+  EXCLUDE_CHROMS="${EXCLUDE_CHROMS}" \
   python "${WORKING_DIR}/src/count_mismatches.py" \
   "${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_${v}kb.ps.tsv" \
   "${MISMATCH_ANALYSIS}" \
@@ -1609,7 +1614,8 @@ calculate_callable_genome() {
   mkdir -p ${POST_ANALYSIS}
   conda activate "${CONDA_ENV_NAME}"
   EXCLUDE_CHROMS="${EXCLUDE_CHROMS}" \
-  
+  MIN_HOMOPOLYMER="${MIN_HOMOPOLYMER}" \
+  REFERENCE_FASTA="${REF}" \
   python "${WORKING_DIR}/src/callable_genome.py" \
   "${EXTRACT_HAPLBLOCK}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_ps.tsv" \
   "${POST_ANALYSIS}" \
@@ -2274,6 +2280,8 @@ _rephase_common_args() {
 --sample-child ${SAMPLE_CHILD} \
 --sample-parent ${SAMPLE_PARENT} \
 --source ${SOURCE_FILE} \
+--reference ${REF} \
+--exclude-chroms ${EXCLUDE_CHROMS} \
 --min-rdepth ${MIN_RDEPTH} \
 --max-rdepth ${MAX_RDEPTH} \
 --gt-qual ${GT_QUAL} \
@@ -2287,7 +2295,10 @@ _rephase_common_args() {
 --verbose ${VERBOSE} \
 --window_rephase ${WINDOW_REPHASE} \
 --threshold_rephase ${THRESHOLD_REPHASE} \
---conda-env ${CONDA_ENV_NAME}"
+--conda-env ${CONDA_ENV_NAME} \
+--max-parent-ad ${MAX_PARENT_AD} \
+--cluster-window ${CLUSTER_WINDOW} \
+--min-homopolymer ${MIN_HOMOPOLYMER}"
 }
 
 submit_rephase_6a_jobs() {
@@ -2752,8 +2763,10 @@ calculate_callable_genome_rephase() {
 
     mkdir -p "${DENUM_DIR}"
 
-    EXCLUDE_CHROMS="${EXCLUDE_CHROMS}" \
     # Sample callable SNPs from the rephased blocks (same args as Part 4)
+    EXCLUDE_CHROMS="${EXCLUDE_CHROMS}" \
+    MIN_HOMOPOLYMER="${MIN_HOMOPOLYMER}" \
+    REFERENCE_FASTA="${REF}" \
     python "${WORKING_DIR}/src/callable_genome.py" \
         "${REPHASE_PS}" \
         "${DENUM_DIR}" \

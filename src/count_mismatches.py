@@ -145,6 +145,22 @@ df = df[
 
 df["pos"] = df["pos"].astype(int)
 
+# ------------------------------------------------------------------
+# Chromosome exclusion (must match the denominator in callable_genome.py)
+# ------------------------------------------------------------------
+# Part 4 excludes chrX/chrY/chrM from the callable genome. Without the same
+# exclusion here the numerator could contain calls on chromosomes the
+# denominator does not cover, which is a rate mismatch, not just noise.
+_excl = {c.strip().lower() for c in
+         os.environ.get("EXCLUDE_CHROMS", "chrX,chrY,chrM").split(",")
+         if c.strip()}
+if _excl:
+    _n_before_excl = len(df)
+    _keep = ~df["chrom"].str.lower().isin(_excl)
+    df = df[_keep]
+    print(f"Chromosome exclusion {sorted(_excl)}: "
+          f"{_n_before_excl} -> {len(df)} sites")
+
 # Snapshot before DP/GQ filtering. The cluster check further down needs to see
 # the sites the depth/quality cuts are about to remove: a candidate whose
 # neighbours were all filtered out looks like a lone mismatch when it is really

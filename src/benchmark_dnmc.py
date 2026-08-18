@@ -45,6 +45,9 @@ def main():
     ap.add_argument("--parent-role", choices=["paternal", "maternal"], default=None)
     ap.add_argument("--out-dir", default=None,
                     help="default: alongside --calls")
+    ap.add_argument("--accessible-bp", type=float, default=2666892426,
+                    help="accessible genome the published counts were "
+                         "normalised over [2666892426]")
     ap.add_argument("--paper-paternal-rate", type=float, default=1.54e-08,
                     help="published paternal DNM rate to compare against "
                          "[1.54e-08]")
@@ -152,8 +155,17 @@ def main():
     except Exception as e:
         rate_note = f"  (callable genome unavailable: {e})"
 
-    paper_rate = (args.paper_paternal_rate if role == "paternal"
-                  else args.paper_maternal_rate)
+    cohort_rate = (args.paper_paternal_rate if role == "paternal"
+                   else args.paper_maternal_rate)
+
+    # Per-trio published rate, recomputed from the truth table rather than
+    # taken from the cohort average: the count of DNMs attributed to THIS
+    # parent, over the accessible genome the paper normalised by. "detectable"
+    # is already restricted to this parent's role.
+    n_germline = int((detectable["variant_origin"] == "germline").sum())
+    n_all_origin = len(detectable)
+    paper_rate = n_germline / args.accessible_bp
+    paper_rate_incl_pz = n_all_origin / args.accessible_bp
 
     def rate(n):
         if not callable_bp:
@@ -188,12 +200,17 @@ def main():
         f"Callable genome (bp)     : {callable_bp:.6e}" if callable_bp
         else f"Callable genome (bp)     : NA{rate_note}",
         f"Mutation rate            : {rate(n_calls):.6e}   ({n_calls} calls)",
-        f"Published {role:<9} rate : {paper_rate:.6e}",
+        f"Accessible genome (paper): {args.accessible_bp:.6e}",
+        f"Paper rate, this trio    : {paper_rate:.6e}   "
+        f"({n_germline} germline {role} DNMs / accessible)",
+        f"  incl. postzygotic      : {paper_rate_incl_pz:.6e}   "
+        f"({n_all_origin} {role} DNMs / accessible)",
         f"  difference (ours-paper): {rate(n_calls) - paper_rate:+.6e}",
         f"  ratio (ours/paper)     : "
         + (f"{rate(n_calls) / paper_rate:.2f}x" if paper_rate else "n/a"),
-        f"  percent of published   : "
+        f"  percent of paper       : "
         + (f"{100.0 * rate(n_calls) / paper_rate:.1f}%" if paper_rate else "n/a"),
+        f"Cohort published {role:<8}: {cohort_rate:.6e}   (reference only)",
         f"Truth rate, detectable   : {rate(len(detectable)):.6e}   "
         f"({len(detectable)} detectable DNMs over the same callable genome)",
         "----------------------------------------------------------------",

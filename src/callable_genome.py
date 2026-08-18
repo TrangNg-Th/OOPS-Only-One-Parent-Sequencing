@@ -402,6 +402,62 @@ print(f"Consistency check passed: all {sampled_df.shape[0]} sampled SNPs "
       "satisfy depth/GQ/GT/autosome/block/orientation/allele-balance filters.")
 
 # =============================================================================
+# Homopolymer mask on the sampled set (mirrors --min-homopolymer in
+# count_mismatches.py)
+# =============================================================================
+# A DNM candidate inside a reference homopolymer is now rejected on the
+# numerator side, so that territory is not callable and must not be counted as
+# such. total_sampled was already written above and deliberately still counts
+# these sites: dropping them only here makes them "sampled but not callable",
+# which shrinks the callable genome instead of cancelling out of the ratio.
+_MIN_HP = int(os.environ.get("MIN_HOMOPOLYMER", "0") or 0)
+_REF_FA = os.environ.get("REFERENCE_FASTA", "")
+
+def _in_homopolymer(fa, chrom, pos, min_run, flank=60):
+    start = max(0, pos - 1 - flank)
+    try:
+        seq = fa.fetch(chrom, start, pos + flank).upper()
+    except Exception:
+        return False
+    if not seq:
+        return False
+    idx = (pos - 1) - start
+    for probe in (idx - 1, idx, idx + 1):
+        if probe < 0 or probe >= len(seq):
+            continue
+        base = seq[probe]
+        if base not in "ACGT":
+            continue
+        lo = hi = probe
+        while lo > 0 and seq[lo - 1] == base:
+            lo -= 1
+        while hi < len(seq) - 1 and seq[hi + 1] == base:
+            hi += 1
+        if (hi - lo + 1) >= min_run:
+            return True
+    return False
+
+if _MIN_HP > 0 and _REF_FA:
+    try:
+        import pysam
+        _fa = pysam.FastaFile(_REF_FA)
+        _mask = sampled_df.apply(
+            lambda r: _in_homopolymer(_fa, r["chrom"], int(r["pos"]), _MIN_HP),
+            axis=1) if len(sampled_df) else []
+        _n_before_hp = len(sampled_df)
+        sampled_df = sampled_df[~pd.Series(_mask, index=sampled_df.index)] \
+            if len(sampled_df) else sampled_df
+        sampled_df = sampled_df.reset_index(drop=True)
+        print(f"Homopolymer mask on sampled set (run >= {_MIN_HP}bp): "
+              f"{_n_before_hp} -> {len(sampled_df)} SNPs "
+              f"(total_sampled stays {total_sampled})")
+    except Exception as e:
+        print(f"WARNING: homopolymer mask on denominator skipped ({e})")
+else:
+    print("Homopolymer mask on denominator: disabled "
+          f"(MIN_HOMOPOLYMER={_MIN_HP}, REFERENCE_FASTA={'set' if _REF_FA else 'unset'})")
+
+# =============================================================================
 # Write BED Output
 # =============================================================================
 bed = pd.DataFrame({
