@@ -23,6 +23,21 @@ if "--cluster-window" in sys.argv:
     CLUSTER_WINDOW = int(sys.argv[_i + 1])
     del sys.argv[_i:_i + 2]
 
+# Reference-based low-complexity mask. A candidate sitting inside a homopolymer
+# run is far more likely to be an alignment artifact than a real DNM: indels in
+# such tracts are routinely represented as neighbouring substitutions.
+MIN_HOMOPOLYMER = 6
+if "--min-homopolymer" in sys.argv:
+    _i = sys.argv.index("--min-homopolymer")
+    MIN_HOMOPOLYMER = int(sys.argv[_i + 1])
+    del sys.argv[_i:_i + 2]
+
+REFERENCE = None
+if "--reference" in sys.argv:
+    _i = sys.argv.index("--reference")
+    REFERENCE = sys.argv[_i + 1]
+    del sys.argv[_i:_i + 2]
+
 if len(sys.argv) not in (12,13,14): # one extra arg for passing the python script
     print("Usage: python count_mismatches.py "
           "<input_tsv> <out_dir> <min_dp> <max_dp> "
@@ -102,6 +117,8 @@ print("Number of Variants Quantile threshold:", NV_QUANTILE)
 print("Mismatch Difference Minimum:", MM_DIFF_MIN)
 print("Max parent contradicting AD reads:", MAX_PARENT_AD)
 print("Cluster-rejection window (bp):", CLUSTER_WINDOW)
+print("Min homopolymer run to reject:", MIN_HOMOPOLYMER)
+print("Reference for homopolymer mask:", REFERENCE)
 
 
 print("--"*20)
@@ -337,9 +354,57 @@ def has_cluster_neighbour(chrom, ps, pos, hap_idx):
     return near.size > 0
 
 
+_fasta = None
+if MIN_HOMOPOLYMER > 0 and REFERENCE:
+    try:
+        import pysam
+        _fasta = pysam.FastaFile(REFERENCE)
+    except Exception as e:
+        print(f"WARNING: cannot open reference {REFERENCE} ({e}); "
+              "homopolymer mask disabled")
+        _fasta = None
+elif MIN_HOMOPOLYMER > 0:
+    print("WARNING: --min-homopolymer set but no --reference; mask disabled")
+
+
+def in_homopolymer(chrom, pos, flank=60):
+    """True if pos sits in (or immediately beside) a long homopolymer run.
+
+    A de novo SNV is a single base change; a run of identical reference bases
+    around it means the aligner had a length-ambiguous tract to place reads in,
+    which is where spurious neighbouring substitutions come from.
+    """
+    if _fasta is None or MIN_HOMOPOLYMER <= 0:
+        return False
+    start = max(0, pos - 1 - flank)
+    try:
+        seq = _fasta.fetch(chrom, start, pos + flank).upper()
+    except Exception:
+        return False
+    if not seq:
+        return False
+    idx = (pos - 1) - start          # candidate offset within seq
+    # Longest run overlapping the candidate base or either neighbour.
+    for probe in (idx - 1, idx, idx + 1):
+        if probe < 0 or probe >= len(seq):
+            continue
+        base = seq[probe]
+        if base not in "ACGT":
+            continue
+        lo = hi = probe
+        while lo > 0 and seq[lo - 1] == base:
+            lo -= 1
+        while hi < len(seq) - 1 and seq[hi + 1] == base:
+            hi += 1
+        if (hi - lo + 1) >= MIN_HOMOPOLYMER:
+            return True
+    return False
+
+
 # Save results
 dnm_records = []
 n_cluster_rejected = 0
+n_homopolymer_rejected = 0
 
 if RECOUNT != "T":
     for (chrom, ps), g in merged.groupby(["chrom", "PS_child"]):
@@ -362,6 +427,10 @@ if RECOUNT != "T":
 
         if has_cluster_neighbour(chrom, ps, pos, hap_idx):
             n_cluster_rejected += 1
+            continue
+
+        if in_homopolymer(chrom, pos):
+            n_homopolymer_rejected += 1
             continue
 
         dnm_records.append({
@@ -404,11 +473,17 @@ elif RECOUNT == "T":
             continue
 
        
+        if in_homopolymer(chrom, pos):
+            n_homopolymer_rejected += 1
+            continue
+
         dnm_records.append({
             "chrom": chrom,
             "pos": pos,
             "PS_child": ps
         })
+print(f"Homopolymer rejection (run >= {MIN_HOMOPOLYMER}bp at candidate): "
+      f"{n_homopolymer_rejected} candidates dropped")
 print(f"Cluster rejection (same haplotype mismatching again within "
       f"{CLUSTER_WINDOW}bp, pre-DP/GQ): {n_cluster_rejected} candidates dropped")
 

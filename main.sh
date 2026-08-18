@@ -124,6 +124,10 @@ OPTIONS  (defaults in brackets)
     --window <BP>           Window around each candidate    [20000]
     --alt-read-count <N>    Min ALT-supporting reads        [8]  (use 1-3 for <=10x)
     --total-rd-ct-min <N>   Min total (REF+ALT) reads       [5]
+    --min-homopolymer <N>   Reject a candidate sitting in a reference
+                            homopolymer run of at least N bp [6].  Such tracts
+                            are length-ambiguous to the aligner and generate
+                            spurious neighbouring substitutions.  0 disables.
     --cluster-window <BP>   Reject a candidate if the same child haplotype
                             mismatches the parent again within this distance
                             [10000].  Evaluated BEFORE the DP/GQ cuts, so a
@@ -199,6 +203,7 @@ ALT_READ_COUNT=8
 MAX_PARENT_ALT=0
 MAX_PARENT_AD=2
 CLUSTER_WINDOW=10000
+MIN_HOMOPOLYMER=6
 VERBOSE=T
 RECOUNT=T
 NOTRECOUNT=F
@@ -253,6 +258,7 @@ while [[ $# -gt 0 ]]; do
         --max-parent-alt) MAX_PARENT_ALT="$2"; shift 2 ;;
         --max-parent-ad) MAX_PARENT_AD="$2"; shift 2 ;;
         --cluster-window) CLUSTER_WINDOW="$2"; shift 2 ;;
+        --min-homopolymer) MIN_HOMOPOLYMER="$2"; shift 2 ;;
         --verbose) VERBOSE="$2"; shift 2 ;;
         --source) SOURCE="$2"; shift 2 ;;
         --window_rephase) WINDOW_REPHASE="$2"; shift 2 ;;
@@ -409,6 +415,7 @@ echo "Total read count minimum for dnmc     : ${TOTAL_READ_COUNT_MIN}"
 echo "Max parental ALT reads tolerated      : ${MAX_PARENT_ALT}"
 echo "Max parental contradicting AD reads   : ${MAX_PARENT_AD}"
 echo "Cluster rejection window (bp)         : ${CLUSTER_WINDOW}"
+echo "Min homopolymer run rejected          : ${MIN_HOMOPOLYMER}"
 echo "Parts to run                          : ${PARTS[*]}"
 echo "END SUMMARY"
 echo "========================================================="
@@ -874,10 +881,10 @@ dnm_candidates_are_empty() {
 write_empty_final_dnmc() {
     local PHASED_VCF="${PRJ_DIR}/${SAMPLE_CHILD}_phasedvcf"
     local dnmc_file="${PHASED_VCF}/final_dnmc_${SAMPLE_CHILD}-from-${SAMPLE_PARENT}.tsv"
-    if [[ ! -f "${dnmc_file}" ]]; then
-        printf '# zero LR-validated DNM candidates\n' > "${dnmc_file}"
-        echo "[zero-dnm] Wrote empty final DNM file: ${dnmc_file}"
-    fi
+    # Overwrite unconditionally: this only runs once candidates are known to be
+    # empty, and a leftover file from a previous run must not survive.
+    printf '# zero LR-validated DNM candidates\n' > "${dnmc_file}"
+    echo "[zero-dnm] Wrote empty final DNM file: ${dnmc_file}"
 }
 
 # ===========================================================================
@@ -1063,7 +1070,9 @@ count_shared_alleles_per_PS_block() {
     ${MM_DIFF_MIN} \
     0 ${NOTRECOUNT} \
     --max-parent-ad ${MAX_PARENT_AD} \
-    --cluster-window ${CLUSTER_WINDOW}
+    --cluster-window ${CLUSTER_WINDOW} \
+    --min-homopolymer ${MIN_HOMOPOLYMER} \
+    --reference "${REF}"
   echo "See outputs in ${MISMATCH_ANALYSIS}"
   echo "Done"
 }
@@ -1559,7 +1568,9 @@ recount_shared_alleles_per_PS_block() {
     "${RECOUNT}" \
     "${DNMC_FILE}" \
     --max-parent-ad "${MAX_PARENT_AD}" \
-    --cluster-window "${CLUSTER_WINDOW}"
+    --cluster-window "${CLUSTER_WINDOW}" \
+    --min-homopolymer "${MIN_HOMOPOLYMER}" \
+    --reference "${REF}"
 
     echo "See outputs in ${MISMATCH_ANALYSIS}"
     echo "Done"
@@ -1723,9 +1734,19 @@ final_summary() {
     # cleanup is no longer needed and has been removed. Only the dnmc.20kb.tsv
     # produced by Part 3b (count_mismatches.py) still needs relocating below.
 
-    if [[ -f "${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.20kb.tsv" ]]; then
-        mv -f "${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.20kb.tsv" \
-              "${dnmc_file}"
+    # The suffix follows --window, matching count_mismatches.py's WINDOW//1000
+    # naming. It was hardcoded to 20kb, so any run with a different --window
+    # silently kept a previous run's calls as the "final" result.
+    local v=$((WINDW / 1000))
+    local recount_tsv="${WORKING_DIR}/mismatch_analysis/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.${v}kb.tsv"
+
+    if [[ -f "${recount_tsv}" ]]; then
+        mv -f "${recount_tsv}" "${dnmc_file}"
+    elif [[ -f "${dnmc_file}" ]]; then
+        # Part 3b produced nothing this run. Do not let a stale final file from
+        # an earlier run be reported as this run's result.
+        echo "[4] WARNING: no ${recount_tsv}; clearing stale ${dnmc_file}"
+        printf '# zero LR-validated DNM candidates\n' > "${dnmc_file}"
     fi
 
     local dnmc_count
