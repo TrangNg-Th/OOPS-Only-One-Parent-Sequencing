@@ -124,6 +124,24 @@ OPTIONS  (defaults in brackets)
     --window <BP>           Window around each candidate    [20000]
     --alt-read-count <N>    Min ALT-supporting reads        [8]  (use 1-3 for <=10x)
     --total-rd-ct-min <N>   Min total (REF+ALT) reads       [5]
+    --cluster-window <BP>   Reject a candidate if the same child haplotype
+                            mismatches the parent again within this distance
+                            [10000].  Evaluated BEFORE the DP/GQ cuts, so a
+                            cluster whose other members were filtered out is
+                            still caught.  0 disables the check.
+    --max-parent-ad <N>     Max contradicting reads tolerated in the parent
+                            VCF AD before a *site* is dropped from mismatch
+                            counting  [2].  0 is measurably too strict: it
+                            cost a call in 10x_82_77 by thinning its block.  A 0/0 parent with ALT reads (or a
+                            1/1 parent with REF reads) above this is skipped;
+                            the PS block is kept, it just loses that variant.
+                            Complements --max-parent-alt, which reads the BAM
+                            with an MQ filter and misses multi-mapping support.
+    --max-parent-alt <N>    Max ALT-supporting reads tolerated in the parent
+                            Illumina BAM before a candidate is rejected  [0]
+                            0 = a true DNM must show no parent ALT evidence.
+                            Raise to 1 if parent sequencing error is costing
+                            you real calls.
     --verbose <T|F>         Verbose LR validation           [T]
 
   Phase-switch refinement (Parts 5/6a)
@@ -178,6 +196,9 @@ MIN_BASE_QUAL=20
 MIN_MAP_QUAL=20
 WINDW=20000
 ALT_READ_COUNT=8
+MAX_PARENT_ALT=0
+MAX_PARENT_AD=2
+CLUSTER_WINDOW=10000
 VERBOSE=T
 RECOUNT=T
 NOTRECOUNT=F
@@ -229,6 +250,9 @@ while [[ $# -gt 0 ]]; do
         --min-map-qual) MIN_MAP_QUAL="$2"; shift 2 ;;
         --window) WINDW="$2"; shift 2 ;;
         --alt-read-count) ALT_READ_COUNT="$2"; shift 2 ;;
+        --max-parent-alt) MAX_PARENT_ALT="$2"; shift 2 ;;
+        --max-parent-ad) MAX_PARENT_AD="$2"; shift 2 ;;
+        --cluster-window) CLUSTER_WINDOW="$2"; shift 2 ;;
         --verbose) VERBOSE="$2"; shift 2 ;;
         --source) SOURCE="$2"; shift 2 ;;
         --window_rephase) WINDOW_REPHASE="$2"; shift 2 ;;
@@ -382,6 +406,9 @@ echo "Vcf file                              : ${NAME_VCF}"
 echo "Reference file                        : ${REF}"
 echo "Excluded chroms                       : ${EXCLUDE_CHROMS}"
 echo "Total read count minimum for dnmc     : ${TOTAL_READ_COUNT_MIN}"
+echo "Max parental ALT reads tolerated      : ${MAX_PARENT_ALT}"
+echo "Max parental contradicting AD reads   : ${MAX_PARENT_AD}"
+echo "Cluster rejection window (bp)         : ${CLUSTER_WINDOW}"
 echo "Parts to run                          : ${PARTS[*]}"
 echo "END SUMMARY"
 echo "========================================================="
@@ -1034,7 +1061,9 @@ count_shared_alleles_per_PS_block() {
     ${GT_QUAL} \
     ${NV_QUANTILE} \
     ${MM_DIFF_MIN} \
-    0 ${NOTRECOUNT}
+    0 ${NOTRECOUNT} \
+    --max-parent-ad ${MAX_PARENT_AD} \
+    --cluster-window ${CLUSTER_WINDOW}
   echo "See outputs in ${MISMATCH_ANALYSIS}"
   echo "Done"
 }
@@ -1179,7 +1208,7 @@ validate_dnmc_with_parent_bam() {
     local OUT_BED="${MISMATCH_ANALYSIS}/${SAMPLE_PARENT}_${SAMPLE_CHILD}_dnmc.parentBAM.bed"
     local MERGED_VCF="${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz"
     local PARENT_BAM="${ORIG_BAM_PARENT_PATH}"
-    local MAX_PARENT_ALT=1
+    # MAX_PARENT_ALT is global, set by --max-parent-alt (default 0)
 
     if [[ ! -s "${IN_BED}" ]]; then
         echo "[parent-check] No candidates in ${IN_BED}; nothing to do"
@@ -1354,6 +1383,7 @@ _chain_common_args() {
 --min-map-qual ${MIN_MAP_QUAL} \
 --window ${WINDW} \
 --alt-read-count ${ALT_READ_COUNT} \
+--max-parent-alt ${MAX_PARENT_ALT} \
 --verbose ${VERBOSE} \
 --exclude-chroms ${EXCLUDE_CHROMS} \
 --total-rd-ct-min ${TOTAL_READ_COUNT_MIN} \
@@ -1527,7 +1557,9 @@ recount_shared_alleles_per_PS_block() {
     "${MM_DIFF_MIN}" \
     "${WINDW}" \
     "${RECOUNT}" \
-    "${DNMC_FILE}"
+    "${DNMC_FILE}" \
+    --max-parent-ad "${MAX_PARENT_AD}" \
+    --cluster-window "${CLUSTER_WINDOW}"
 
     echo "See outputs in ${MISMATCH_ANALYSIS}"
     echo "Done"
@@ -2230,6 +2262,7 @@ _rephase_common_args() {
 --min-map-qual ${MIN_MAP_QUAL} \
 --window ${WINDW} \
 --alt-read-count ${ALT_READ_COUNT} \
+--max-parent-alt ${MAX_PARENT_ALT} \
 --verbose ${VERBOSE} \
 --window_rephase ${WINDOW_REPHASE} \
 --threshold_rephase ${THRESHOLD_REPHASE} \
@@ -2545,7 +2578,7 @@ validate_rephase_dnmc_with_parent_bam() {
     # use the canonical 2b merged VCF.
     local MERGED_VCF="${MERGED_PHASED_VCF}/${SAMPLE_PARENT}_${SAMPLE_CHILD}.merged.vcf.gz"
     local PARENT_BAM="${ORIG_BAM_PARENT_PATH}"
-    local MAX_PARENT_ALT=1
+    # MAX_PARENT_ALT is global, set by --max-parent-alt (default 0)
 
     if [[ ! -s "${IN_BED}" ]]; then
         echo "[6a-parent-check] No candidates in ${IN_BED}; nothing to do"

@@ -9,6 +9,20 @@ import os
 # ------------------------------------------------------------------
 # Argument parsing
 # ------------------------------------------------------------------
+# Optional keyword flag, pulled out of argv before the positional contract
+# below is evaluated so the existing call sites keep working unchanged.
+MAX_PARENT_AD = 0
+if "--max-parent-ad" in sys.argv:
+    _i = sys.argv.index("--max-parent-ad")
+    MAX_PARENT_AD = int(sys.argv[_i + 1])
+    del sys.argv[_i:_i + 2]
+
+CLUSTER_WINDOW = 10000
+if "--cluster-window" in sys.argv:
+    _i = sys.argv.index("--cluster-window")
+    CLUSTER_WINDOW = int(sys.argv[_i + 1])
+    del sys.argv[_i:_i + 2]
+
 if len(sys.argv) not in (12,13,14): # one extra arg for passing the python script
     print("Usage: python count_mismatches.py "
           "<input_tsv> <out_dir> <min_dp> <max_dp> "
@@ -86,6 +100,8 @@ print("Child ID:", child_id)
 print("Genotype Quality threshold:", GT_qual)
 print("Number of Variants Quantile threshold:", NV_QUANTILE)
 print("Mismatch Difference Minimum:", MM_DIFF_MIN)
+print("Max parent contradicting AD reads:", MAX_PARENT_AD)
+print("Cluster-rejection window (bp):", CLUSTER_WINDOW)
 
 
 print("--"*20)
@@ -100,6 +116,25 @@ df = pd.read_csv(in_file, sep="\t", dtype=str)
 # df.columns = ["chrom", "pos", "PS_mom", "PS_child", "GT_mom", "GT_child", "DP_mom", "DP_child", "GQ_mom", "GQ_child", "None"]
 
 
+# ------------------------------------------------------------------
+# Genotype sanity filtering
+# ------------------------------------------------------------------
+# Done before DP/GQ so that df_unfiltered below still has parseable genotypes.
+biallelic01 = re.compile(r"^[01][\/|][01]$")
+df = df[
+    df["GT_mom"].str.match(biallelic01) &
+    df["GT_child"].str.match(biallelic01)
+]
+
+df["pos"] = df["pos"].astype(int)
+
+# Snapshot before DP/GQ filtering. The cluster check further down needs to see
+# the sites the depth/quality cuts are about to remove: a candidate whose
+# neighbours were all filtered out looks like a lone mismatch when it is really
+# one of a cluster, which is the signature of a local phasing artifact rather
+# than a DNM.
+df_unfiltered = df.copy()
+
 ## --------------------------------------------------------------------
 # DP filtering
 ## --------------------------------------------------------------------
@@ -111,17 +146,31 @@ df = df[
 # Inlude only alleles where both mom and child have genotype quality >= 30
 df = df[(df['GQ_mom'].astype(int) >= GT_qual) & (df['GQ_child'].astype(int) >= GT_qual)]
 
-
 # ------------------------------------------------------------------
-# Genotype sanity filtering
+# Parent AD veto (site-level)
 # ------------------------------------------------------------------
-biallelic01 = re.compile(r"^[01][\/|][01]$")
-df = df[
-    df["GT_mom"].str.match(biallelic01) &
-    df["GT_child"].str.match(biallelic01)
-]
+# A homozygous parent call that still carries reads for the allele it does not
+# claim is untrustworthy: a "mismatch" the child shows there may be an
+# inherited variant the genotyper undercalled, not a DNM. Drop those sites
+# only -- the PS block survives and simply loses a variant from n_variants.
+# This is the VCF-AD counterpart to parent_readcheck.py, which reads the BAM
+# with an MQ filter and so cannot see multi-mapping ALT support.
+_ad_cols = ["ADref_mom", "ADalt_mom"]
+if all(c in df.columns for c in _ad_cols):
+    _adref_mom = pd.to_numeric(df["ADref_mom"], errors="coerce").fillna(0)
+    _adalt_mom = pd.to_numeric(df["ADalt_mom"], errors="coerce").fillna(0)
+    _gt_mom = df["GT_mom"].str.replace("|", "/", regex=False)
 
-df["pos"] = df["pos"].astype(int)
+    parent_ad_bad = (
+        ((_gt_mom == "0/0") & (_adalt_mom > MAX_PARENT_AD)) |
+        ((_gt_mom == "1/1") & (_adref_mom > MAX_PARENT_AD))
+    )
+    print(f"Parent AD veto (hom parent with > {MAX_PARENT_AD} contradicting "
+          f"reads): {len(df)} -> {len(df) - int(parent_ad_bad.sum())} sites")
+    df = df[~parent_ad_bad]
+else:
+    print(f"WARNING: {_ad_cols} not found in {in_file}; skipping parent AD veto. "
+          "Re-extract _ps.tsv with the AD-aware query ([%AD{0},][%AD{1},]).")
 
 # ------------------------------------------------------------------
 # Per-PS mismatch counting
@@ -249,8 +298,48 @@ if RECOUNT == "T":
         )
     )
 
+# ------------------------------------------------------------------
+# Cluster index (built on the pre-DP/GQ snapshot)
+# ------------------------------------------------------------------
+# For every PS block, record the positions where each child haplotype
+# mismatches the parent, using sites that have NOT yet been through the
+# depth/quality cuts. A genuine DNM is a solitary event; if the same
+# haplotype mismatches again within CLUSTER_WINDOW bp, the block has a local
+# phasing/mapping problem and the candidate is not trustworthy.
+raw_mm_by_block = {}
+if CLUSTER_WINDOW > 0:
+    for (chrom, ps), g in df_unfiltered.groupby(["chrom", "PS_child"]):
+        v = g["GT_child"].str.split(r"[\/|]", expand=True).astype(int)
+        h0, h1 = v[0].values, v[1].values
+        mom = g["GT_mom"].str.split(r"[\/|]", expand=True).astype(int).values
+
+        mask_h0 = (mom == h0[:, None]).any(axis=1)
+        mask_h1 = (mom == h1[:, None]).any(axis=1)
+
+        pos_arr = g["pos"].values
+        raw_mm_by_block[(chrom, ps)] = (pos_arr[~mask_h0], pos_arr[~mask_h1])
+
+
+def has_cluster_neighbour(chrom, ps, pos, hap_idx):
+    """True if the same haplotype mismatches again within CLUSTER_WINDOW bp.
+
+    hap_idx is 0 or 1 and indexes the child haplotype carrying the candidate.
+    Phasing is consistent within a PS block, so the index is comparable across
+    all sites of that block.
+    """
+    if CLUSTER_WINDOW <= 0:
+        return False
+    entry = raw_mm_by_block.get((chrom, ps))
+    if entry is None:
+        return False
+    others = entry[hap_idx]
+    near = others[(np.abs(others - pos) <= CLUSTER_WINDOW) & (others != pos)]
+    return near.size > 0
+
+
 # Save results
 dnm_records = []
+n_cluster_rejected = 0
 
 if RECOUNT != "T":
     for (chrom, ps), g in merged.groupby(["chrom", "PS_child"]):
@@ -264,11 +353,16 @@ if RECOUNT != "T":
         n0, n1 = np.sum(~mask_h0), np.sum(~mask_h1)
         if n0 == 1 and n1 > 1:
             pos = g.loc[~mask_h0, "pos"].iloc[0]
+            hap_idx = 0
         elif n1 == 1 and n0 > 1:
             pos = g.loc[~mask_h1, "pos"].iloc[0]
+            hap_idx = 1
         else:
             continue
-       
+
+        if has_cluster_neighbour(chrom, ps, pos, hap_idx):
+            n_cluster_rejected += 1
+            continue
 
         dnm_records.append({
             "chrom": chrom,
@@ -291,16 +385,22 @@ elif RECOUNT == "T":
         # - If one block has exactly one mismatch and the other block has more than one mismatch
         if (np.sum(~mask_h0) == 1) and (np.sum(~mask_h1) > 1):
             pos = g.loc[~mask_h0, "pos"].iloc[0]
+            hap_idx = 0
 
         # - If one block has exactly one mismatch and the other block has more than one mismatch
         elif (np.sum(~mask_h1) == 1) and (np.sum(~mask_h0) > 1):
             pos = g.loc[~mask_h1, "pos"].iloc[0]
+            hap_idx = 1
 
         else:
             continue
-        
+
 
         if (chrom, pos) not in dnmc_set:
+            continue
+
+        if has_cluster_neighbour(chrom, ps, pos, hap_idx):
+            n_cluster_rejected += 1
             continue
 
        
@@ -309,6 +409,9 @@ elif RECOUNT == "T":
             "pos": pos,
             "PS_child": ps
         })
+print(f"Cluster rejection (same haplotype mismatching again within "
+      f"{CLUSTER_WINDOW}bp, pre-DP/GQ): {n_cluster_rejected} candidates dropped")
+
 if not dnm_records:
     print("No candidate DNMs found after recounting with the specified criteria.")
 else:
