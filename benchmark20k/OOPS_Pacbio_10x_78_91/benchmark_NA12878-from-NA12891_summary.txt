@@ -1,0 +1,24 @@
+================ OOPS benchmark vs ground truth ================
+Calls file               : /N/scratch/nguyetrt/OOPS_outputs/OOPS_Pacbio_10x_78_91/NA12878_phasedvcf/final_dnmc_NA12878-from-NA12891.tsv
+Truth file               : data/truth_dnm_CEPH1463.tsv
+Child / parent           : NA12878 / NA12891 (paternal)
+Excluded chroms          : chrM,chrX,chrY
+----------------------------------------------------------------
+Calls made               : 22
+  TP (in truth)          : 21
+  FP (not in truth)      : 1
+Precision                : 0.955
+----------------------------------------------------------------
+Truth rows for child     : 84
+  detectable (paternal ): 62
+  cannot_determine       : 9
+  other parent           : 13
+Recall (vs detectable)   : 0.306
+----------------------------------------------------------------
+TP breakdown by truth annotation:
+  germline     cannot_determine   2
+  germline     paternal           19
+----------------------------------------------------------------
+Labelled calls -> benchmark20k/OOPS_Pacbio_10x_78_91/benchmark_NA12878-from-NA12891_labelled.tsv
+Missed truth   -> benchmark20k/OOPS_Pacbio_10x_78_91/benchmark_NA12878-from-NA12891_missed.tsv
+================================================================

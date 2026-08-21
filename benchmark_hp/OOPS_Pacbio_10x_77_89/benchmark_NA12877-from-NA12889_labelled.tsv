@@ -1,0 +1,8 @@
+chrom	pos	PS_child	label	ref	alt	variant_origin	inheritance
+chr1	180411510	180391748	TP	G	A	germline	paternal
+chr13	53888643	53869766	TP	G	A	germline	paternal
+chr15	27479523	27465524	TP	C	G	germline	paternal
+chr17	6403423	6384166	TP	G	A	germline	paternal
+chr5	33718949	33705178	TP	G	A	germline	cannot_determine
+chr6	55553171	55534345	TP	G	A	germline	paternal
+chr9	132532248	132521973	TP	C	T	postzygotic	paternal

@@ -828,6 +828,7 @@ echo "[phase] Haplotagging cleaned BAM"
 whatshap haplotag \
   --reference "\${REF}" \
   --ignore-read-groups \
+  --output-threads ${CPUS} \
   -o "\${HP_BAM}" \
   "\${PHASED_VCF}" \
   "\${CLEAN_BAM}"

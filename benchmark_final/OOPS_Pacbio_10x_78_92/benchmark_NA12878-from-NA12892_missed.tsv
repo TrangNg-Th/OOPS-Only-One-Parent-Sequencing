@@ -1,0 +1,12 @@
+sample	chromosome	position	ref	alt	variant_origin	inheritance
+NA12878	chr1	127668855	T	C	germline	maternal
+NA12878	chr13	55835985	G	A	postzygotic	maternal
+NA12878	chr13	108744059	C	T	postzygotic	maternal
+NA12878	chr15	14802521	C	T	germline	maternal
+NA12878	chr17	179869	C	T	postzygotic	maternal
+NA12878	chr18	68608134	C	A	postzygotic	maternal
+NA12878	chr19	12472139	C	T	germline	maternal
+NA12878	chr3	139195148	C	T	postzygotic	maternal
+NA12878	chr4	45332668	G	T	postzygotic	maternal
+NA12878	chr6	62134728	T	A	postzygotic	maternal
+NA12878	chr8	130934830	G	A	postzygotic	maternal

@@ -1,0 +1,35 @@
+================ OOPS benchmark vs ground truth ================
+Calls file               : /N/scratch/nguyetrt/OOPS_outputs/OOPS_Pacbio_10x_79_77/NA12879_phasedvcf/final_dnmc_NA12879-from-NA12877.tsv
+Truth file               : data/truth_dnm_CEPH1463.tsv
+Child / parent           : NA12879 / NA12877 (paternal)
+Excluded chroms          : chrM,chrX,chrY
+----------------------------------------------------------------
+Calls made               : 12
+  TP (in truth)          : 12
+  FP (not in truth)      : 0
+Precision                : 1.000
+----------------------------------------------------------------
+Truth rows for child     : 62
+  detectable (paternal ): 41
+  cannot_determine       : 11
+  other parent           : 10
+Recall (vs detectable)   : 0.268
+----------------------------------------------------------------
+Callable genome (bp)     : 7.949425e+08
+Mutation rate            : 1.509543e-08   (12 calls)
+Accessible genome (paper): 2.666892e+09
+Paper rate, this trio    : 1.387383e-08   (37 germline paternal DNMs / accessible)
+  incl. postzygotic      : 1.537370e-08   (41 paternal DNMs / accessible)
+  difference (ours-paper): +1.221605e-09
+  ratio (ours/paper)     : 1.09x
+  percent of paper       : 108.8%
+Cohort published paternal: 1.540000e-08   (reference only)
+Truth rate, detectable   : 5.157605e-08   (41 detectable DNMs over the same callable genome)
+----------------------------------------------------------------
+TP breakdown by truth annotation:
+  germline     cannot_determine   1
+  germline     paternal           11
+----------------------------------------------------------------
+Labelled calls -> benchmark_final/OOPS_Pacbio_10x_79_77/benchmark_NA12879-from-NA12877_labelled.tsv
+Missed truth   -> benchmark_final/OOPS_Pacbio_10x_79_77/benchmark_NA12879-from-NA12877_missed.tsv
+================================================================

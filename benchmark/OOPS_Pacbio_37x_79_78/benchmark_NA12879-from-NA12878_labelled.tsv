@@ -1,0 +1,4 @@
+chrom	pos	PS_child	label	ref	alt	variant_origin	inheritance
+chr2	32894523	32875223	TP	G	A	germline	maternal
+chr2	64905820	64886681	TP	C	T	germline	maternal
+chrX	92269484	92250166	FP	.	.	.	.
