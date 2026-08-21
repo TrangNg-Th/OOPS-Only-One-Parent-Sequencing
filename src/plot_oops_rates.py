@@ -149,7 +149,8 @@ def collect_runs(roots, platform_filter):
                 rate=n_dnm / callable_bp,
                 rate_lo=lo / callable_bp, rate_hi=hi / callable_bp,
                 fingerprint=fingerprint,
-                mtime=os.path.getmtime(final[0])))
+                mtime=os.path.getmtime(final[0]),
+                stale=is_stale(d, final[0])))
 
     df = pd.DataFrame(rows)
     if df.empty:
@@ -187,6 +188,19 @@ def dedupe_cells(df):
             dropped.append((df.run[i], df.root[i], df.run[g.index[-1]]))
     out = df.loc[sorted(keep)].reset_index(drop=True)
     return out, dropped
+
+
+def is_stale(run_dir, final_path):
+    """True if the call set is older than the child BAM it claims to describe.
+
+    A run whose inputs were replaced after its results were written was never
+    computed from those inputs, so its numbers belong to whatever BAM used to
+    be there. That is not a measurement of this depth.
+    """
+    bams = glob.glob(os.path.join(run_dir, "bam", "*.bam"))
+    if not bams:
+        return False
+    return os.path.getmtime(final_path) < max(os.path.getmtime(b) for b in bams)
 
 
 def read_qualified(run_dir):
@@ -243,11 +257,11 @@ def figure_depth(df, per_child, cohort, n_per_child, child, out_path,
               file=sys.stderr)
         return None
     sub = sub.sort_values("coverage")
-    U = 1e-9                                  # plot in units of 1e-9 /bp/gen
+    U = 1e-8                                  # plot in units of 1e-8 /bp/gen
 
     fig, (ax, axn) = plt.subplots(
         2, 1, figsize=(11, 7.6), sharex=True,
-        gridspec_kw=dict(height_ratios=[3.2, 1], hspace=0.10))
+        gridspec_kw=dict(height_ratios=[1, 1], hspace=0.10))
 
     covs = sorted(sub.coverage.unique())
     x_of = {c: i for i, c in enumerate(covs)}
@@ -297,7 +311,7 @@ def figure_depth(df, per_child, cohort, n_per_child, child, out_path,
         axn.plot(x, s_.callable_bp / 1e9, color=color, lw=2.0, marker=marker,
                  ms=7, mec="white", mew=1.2, alpha=0.9)
 
-    ax.set_ylabel("Mutation rate  ($\\times 10^{-9}$ per bp per generation)",
+    ax.set_ylabel("Mutation rate  ($\\times 10^{-8}$ per bp per generation)",
                   fontsize=11)
     ax.set_ylim(bottom=0)
     ax.margins(x=0.04)
@@ -334,10 +348,10 @@ def figure_depth(df, per_child, cohort, n_per_child, child, out_path,
 
     ax.set_title(f"OOPS mutation-rate estimate vs read depth — child {child}",
                  fontsize=14, fontweight="bold", loc="left", pad=26)
-    ax.text(0, 1.045,
-            "bold numbers = DNMs called at that depth · the callable genome "
-            "(lower panel) moves with them, so the ratio stays near truth",
-            transform=ax.transAxes, fontsize=9.5, color="0.4", va="bottom")
+    # ax.text(0, 1.045,
+    #         "bold numbers = DNMs called at that depth · the callable genome "
+    #         "(lower panel) moves with them, so the ratio stays near truth",
+    #         transform=ax.transAxes, fontsize=9.5, color="0.4", va="bottom")
 
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
@@ -457,6 +471,13 @@ def main():
     ap.add_argument("--highlight-depth", type=int, default=10)
     ap.add_argument("--trio-coverage", type=int, default=10,
                     help="coverage to show in the per-trio figure (default 10x)")
+    ap.add_argument("--keep-stale-runs", action="store_true",
+                    help="keep runs whose results are older than their own input "
+                         "BAM (default: drop them)")
+    ap.add_argument("--keep-duplicate-runs", action="store_true",
+                    help="keep runs whose outputs are byte-identical to another "
+                         "run's (default: drop them -- a re-submitted chain that "
+                         "never rewrote its outputs is not a second measurement)")
     ap.add_argument("--keep-duplicate-cells", action="store_true",
                     help="plot every run, even when two runs share the same "
                          "child/sex/coverage (default: keep only the newest)")
@@ -469,6 +490,19 @@ def main():
     df = collect_runs(roots, args.platform)
     if df.empty:
         sys.exit("No completed runs found.")
+
+    if not args.keep_stale_runs:
+        for _, r in df[df.stale].iterrows():
+            print(f"  drop {r.run}: results predate the child BAM in that run "
+                  f"directory, so they were not computed from it", file=sys.stderr)
+        df = df[~df.stale].reset_index(drop=True)
+
+    if not args.keep_duplicate_runs:
+        dup = df[df.is_duplicate]
+        for _, r in dup.iterrows():
+            print(f"  drop {r.run}: outputs byte-identical to {r.duplicate_of}, "
+                  f"not an independent measurement", file=sys.stderr)
+        df = df[~df.is_duplicate].reset_index(drop=True)
 
     if not args.keep_duplicate_cells:
         df, dropped = dedupe_cells(df)
