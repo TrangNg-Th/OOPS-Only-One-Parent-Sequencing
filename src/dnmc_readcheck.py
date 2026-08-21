@@ -25,13 +25,30 @@ from collections import Counter, defaultdict
 # callers that pass only 10 args keep working unchanged. New callers pass an
 # explicit directory so outputs land next to the rest of that step's results
 # instead of in whatever directory the script happened to be launched from.
+# ------------------------------------------------------------
+# Optional keyword flags, removed from argv before the positional
+# contract below is evaluated so existing call sites keep working.
+# ------------------------------------------------------------
+# A heterozygous site is expected to carry roughly equal support on the two
+# haplotypes, and long reads are haplotagged imperfectly. The two defaults
+# below reflect that; the flags restore the previous, stricter behaviour.
+REJECT_TIES = False
+if "--reject-ties" in sys.argv:
+    sys.argv.remove("--reject-ties")
+    REJECT_TIES = True
+
+STRICT_UNTAGGED = False
+if "--strict-untagged" in sys.argv:
+    sys.argv.remove("--strict-untagged")
+    STRICT_UNTAGGED = True
+
 if len(sys.argv) < 11 or len(sys.argv) > 12:
     print(
         "Usage: python dnmc_readcheck.py "
         "<child_id> <child_bam> <input_bed> "
         "<min_base_qual> <min_mapping_qual> "
         "<window> <alt_read_count> <verbose> <label> <total_read_min> "
-        "[out_dir]"
+        "[out_dir] [--reject-ties] [--strict-untagged]"
     )
     sys.exit(1)
 
@@ -111,6 +128,8 @@ for chrom, start, end in sites:
     # allele -> Counter(haplotype -> read count)
     allele_hp = defaultdict(Counter)
     allele_hp_reads = defaultdict(lambda: defaultdict(list))  # allele -> hp -> list of read names
+    allele_untagged = Counter()                 # allele -> count of HP-less reads
+    allele_untagged_reads = defaultdict(list)   # allele -> those read names
 
     for col in bam.pileup(
         chrom,
@@ -134,6 +153,15 @@ for chrom, start, end in sites:
                 continue
 
             hp = read.get_tag("HP") if read.has_tag("HP") else None
+
+            if hp is None and not STRICT_UNTAGGED:
+                # An un-haplotagged read carries no phase information. Treating
+                # it as a third "haplotype" made a single stray read reject an
+                # otherwise clean site, so keep it for depth only.
+                allele_untagged[base] += 1
+                allele_untagged_reads[base].append(read.query_name)
+                continue
+
             allele_hp[base][hp] += 1
             allele_hp_reads[base][hp].append(read.query_name)
 
@@ -142,6 +170,8 @@ for chrom, start, end in sites:
         print(f"Processing {chrom}:{pos}")
         for allele, hp_counts in allele_hp.items():
             print(f"{allele} -> {hp_counts}")
+        if allele_untagged:
+            print(f"untagged (depth only) -> {dict(allele_untagged)}")
         print("=" * 40)
 
     # ========================================================
@@ -164,8 +194,9 @@ for chrom, start, end in sites:
     # ========================================================
     # Compute allele counts
     # ========================================================
+    # Untagged reads counted toward depth, but never toward the purity test.
     allele_totals = {
-        allele: sum(hp_counts.values())
+        allele: sum(hp_counts.values()) + allele_untagged.get(allele, 0)
         for allele, hp_counts in allele_hp.items()
     }
 
@@ -176,17 +207,19 @@ for chrom, start, end in sites:
     a1, a2 = alleles
     c1, c2 = allele_totals[a1], allele_totals[a2]
 
-    # Reject ambiguous tie cases
-    if c1 == c2:
+    if REJECT_TIES and c1 == c2:
         continue
 
-    # Assign REF = more supported allele, ALT = less supported
-    if c1 > c2:
-        ref_allele, alt_allele = a1, a2
-        ref_count, alt_count = c1, c2
+    # Assign REF = more supported allele, ALT = less supported. Equal support is
+    # the expected shape of a het, not a defect: the site still passes, and the
+    # REF/ALT labels are then decided by allele order so the output is stable.
+    # Nothing downstream of this point depends on which of the two got which
+    # label -- the pass/fail tests below are symmetric when c1 == c2.
+    if c1 != c2:
+        ref_allele, alt_allele = (a1, a2) if c1 > c2 else (a2, a1)
     else:
-        ref_allele, alt_allele = a2, a1
-        ref_count, alt_count = c2, c1
+        ref_allele, alt_allele = sorted((a1, a2))
+    ref_count, alt_count = allele_totals[ref_allele], allele_totals[alt_allele]
 
     # Require minimum support for ALT allele
     if alt_count < alt_read_count:
